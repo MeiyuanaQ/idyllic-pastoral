@@ -1,0 +1,17 @@
+{
+    "required": true,
+    "package": "com.crispyraccoon.pastoralcraft.mixin",
+    "compatibilityLevel": "JAVA_21",
+    "refmap": "pastoralcraft.refmap.json",
+    "mixins": [
+        "ChunkAccessMixin",
+        "LevelChunkMixin",
+        "LevelMixin",
+        "SugarCaneBlockMixin",
+        "KelpBlockMixin",
+        "TomatoBlockMixin",
+        "FlaxBlockMixin"
+    ],
+    "client": [],
+    "server": []
+}
