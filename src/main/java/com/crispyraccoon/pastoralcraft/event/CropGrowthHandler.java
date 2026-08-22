@@ -349,7 +349,10 @@ public class CropGrowthHandler {
             // plantedDay + currentDay), so skip scanning this level entirely.
             Integer lastDay = lastProcessedSolarDay.get(level);
             if (lastDay != null) {
-                if (lastDay == currentDay) {
+                // Early-out only when the solar day is unchanged AND no stem has a
+                // deferred fruit settlement pending (deferral happens in the
+                // chunk-load path, which must be re-settled even on the same day).
+                if (lastDay == currentDay && !CropGrowthTracker.hasStemSettlementPending(level)) {
                     continue;
                 }
                 if (currentDay < lastDay) {
@@ -361,6 +364,9 @@ public class CropGrowthHandler {
                 }
             }
             lastProcessedSolarDay.put(level, currentDay);
+            // Consume the deferred-settlement flag before the scan below: the scan
+            // runs with duringChunkLoad=false, so it cannot re-mark this level.
+            CropGrowthTracker.clearStemSettlementPending(level);
 
             Season currentSeason = CropGrowthTracker.getSeason(level);
             int seasonLength = CropGrowthTracker.getSeasonLength(level);

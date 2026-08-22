@@ -16,6 +16,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.StemBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
@@ -259,6 +260,82 @@ public class CropGrowthGameTests {
                         + " managerDay=" + SolarHolders.getSaveData(level).getSolarTermsDay());
             }
         });
+    }
+
+    // =======================================================================
+    // Melon stem (STEM): chunk-load deferral preserves the earned fruit (N1).
+    // =======================================================================
+
+    /**
+     * N1 regression: a melon stem that matured + fruited in summer and then mutated
+     * in an unsuitable season must NOT lose its fruit when the chunk-load catch-up
+     * runs. The chunk-load path defers (marks the level pending and keeps the stem),
+     * and the periodic re-scan places the fruit before mutating the stem to grass.
+     *
+     * <p>Drives the real {@code onChunkLoad} (duringChunkLoad=true) and
+     * {@code periodicCatchUpCheck} (duringChunkLoad=false) entry points directly,
+     * so it exercises the deferral + re-scan chain without a real chunk unload.</p>
+     */
+    @GameTest(template = "empty_8x8", timeoutTicks = 600, batch = "stem_defer")
+    public static void melonStemChunkLoadDeferPreservesFruit(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        setSolarDay(level, 45); // summer — plant here so the entry gets plantedDay=45
+
+        BlockPos farmland = helper.absolutePos(new BlockPos(0, 2, 0));
+        BlockPos stem = helper.absolutePos(new BlockPos(0, 3, 0));
+        BlockPos fruitSupport = helper.absolutePos(new BlockPos(1, 2, 0));
+        BlockPos fruit = helper.absolutePos(new BlockPos(1, 3, 0));
+        level.setBlock(farmland, Blocks.FARMLAND.defaultBlockState(), 2);
+        level.setBlock(stem, Blocks.MELON_STEM.defaultBlockState(), 2); // LevelMixin → entry plantedDay=45
+        level.setBlock(fruitSupport, Blocks.DIRT.defaultBlockState(), 2);
+
+        // Find an unsuitable-season day where the deterministic sim is mutated &&
+        // fruited (melon stem: suitable=summer, daysPerStage=3, daysPerFruit=3).
+        var suitableSeasons = CropGrowthTracker.resolveSuitableSeasons(
+                CropGrowthTracker.getSeason(level), Blocks.MELON_STEM);
+        int currentDay = -1;
+        for (int day = 84; day <= 380; day++) { // autumn + winter + spring (+ next autumn)
+            var sim = CropGrowthTracker.simulateStem(
+                    stem.asLong(), 45, day, 3, 3, StemBlock.MAX_AGE,
+                    CropGrowthTracker.getSeasonLength(level), suitableSeasons, 0.20, 0.20);
+            if (sim.mutated() && sim.fruited()) {
+                currentDay = day;
+                break;
+            }
+        }
+        if (currentDay < 0) {
+            helper.fail("no unsuitable-season day yields mutated+fruited for this stem");
+            return;
+        }
+        setSolarDay(level, currentDay);
+
+        // Simulate ChunkEvent.Load → onChunkLoad → catchUpInternal(duringChunkLoad=true).
+        var chunk = level.getChunkAt(stem);
+        CropGrowthTracker.onChunkLoad(chunk, level);
+
+        // Deferral: stem must NOT have mutated, and the level must be marked pending.
+        boolean stillStem = level.getBlockState(stem).getBlock() instanceof StemBlock;
+        boolean pending = CropGrowthTracker.hasStemSettlementPending(level);
+        if (!stillStem || !pending) {
+            helper.fail("deferral failed: stillStem=" + stillStem + " pending=" + pending
+                    + " stem=" + level.getBlockState(stem));
+            return;
+        }
+
+        // Simulate the periodic re-scan → catchUpInternal(duringChunkLoad=false).
+        CropGrowthTracker.periodicCatchUpCheck(chunk, level, currentDay,
+                CropGrowthTracker.getSeason(level), CropGrowthTracker.getSeasonLength(level));
+
+        // Re-scan: fruit placed, stem mutated to short grass.
+        boolean fruitPlaced = level.getBlockState(fruit).is(Blocks.MELON);
+        boolean stemGone = level.getBlockState(stem).is(Blocks.SHORT_GRASS);
+        if (fruitPlaced && stemGone) {
+            helper.succeed();
+        } else {
+            helper.fail("re-scan failed: fruit=" + level.getBlockState(fruit)
+                    + " stem=" + level.getBlockState(stem)
+                    + " tracked=" + CropGrowthTracker.isTracked(level, stem));
+        }
     }
 
     // =======================================================================

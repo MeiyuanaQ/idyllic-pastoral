@@ -114,6 +114,13 @@ public final class StemStrategy {
 
             // Place the fruit
             BlockWriter.internalSetBlock(level, fruitPos, fruitBlock.defaultBlockState(), BlockWriter.FLAG_UPDATE_NEIGHBORS);
+            // 果实下方若是耕地,按原版逻辑压毁为泥土(瓜在耕地上方,耕地应变为泥土)。
+            // 显式调用 turnToDirt 兜底:内部 setBlock 的邻居通知在 1.21.1 的 NeighborUpdater 下
+            // 未必触发 FarmBlock.updateShape(UP)→scheduleTick→tick 的 decay 链。
+            BlockState supportNow = level.getBlockState(fruitPos.below());
+            if (supportNow.getBlock() instanceof FarmBlock) {
+                FarmBlock.turnToDirt(null, supportNow, level, fruitPos.below());
+            }
             // Convert stem to AttachedStemBlock facing the fruit
             BlockState attachedState = attachedStemBlock.defaultBlockState()
                     .setValue(BlockStateProperties.HORIZONTAL_FACING, dir);
@@ -189,10 +196,19 @@ public final class StemStrategy {
                 CropGrowthConfig.STEM_UNSUITABLE_FRUIT_CHANCE.get());
 
         if (sim.mutated()) {
+            // 已结瓜但果实尚未落地的普通茎(StemBlock):chunk-load 补涨不得先变异 ——
+            // tryPlaceStemFruit 是跨 chunk 写(ChunkEvent.Load 内读相邻 chunk 会死锁),
+            // 故整体推迟到周期补涨(其以 duringChunkLoad=false 重跑同一确定性 simulateStem,
+            // 先补放果实再变异,果实不丢)。attached 茎果实已独立存在、未结瓜茎无果可补,直接变异。
+            if (duringChunkLoad && shouldPlaceStemFruitBeforeMutate(sim.fruited(), state.getBlock())) {
+                CropGrowthTracker.markStemSettlementPending(level);
+                return false; // 早退在守卫之前,不触碰 INTERNAL_GROWTH
+            }
             boolean wasInternal = InternalGrowthFlag.INTERNAL_GROWTH.get();
             if (!wasInternal) InternalGrowthFlag.INTERNAL_GROWTH.set(true);
             try {
-                // 已结瓜的成熟茎先补放果实,再变草(果实为独立方块,保留)
+                // 已结瓜的成熟茎先补放果实,再变草(果实为独立方块,保留);
+                // 放果失败(果实位被占)仍继续变异 —— 决策:不保留重试,茎正常变异。
                 if (!duringChunkLoad && shouldPlaceStemFruitBeforeMutate(sim.fruited(), state.getBlock())) {
                     tryPlaceStemFruit(level, pos, state);
                 }

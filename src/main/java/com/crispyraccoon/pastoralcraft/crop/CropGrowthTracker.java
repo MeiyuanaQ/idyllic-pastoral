@@ -95,6 +95,34 @@ public class CropGrowthTracker {
     }
 
     /**
+     * Levels with a melon/pumpkin stem whose fruit settlement was deferred during a
+     * {@code ChunkEvent.Load} catch-up (the cross-chunk fruit write is unsafe while the
+     * chunk is still loading). The periodic catch-up consults this set to force one
+     * same-day re-scan instead of skipping the whole level via the
+     * {@code lastProcessedSolarDay} early-out.
+     *
+     * <p>Weak keys (like {@link #trackedChunks}) so an unloaded server level can be
+     * GC'd; single-threaded (main thread) access only.</p>
+     */
+    private static final Set<Level> stemSettlementPending =
+            Collections.newSetFromMap(new WeakHashMap<>());
+
+    /** Mark a level as having a deferred stem-fruit settlement to re-scan. */
+    public static void markStemSettlementPending(Level level) {
+        stemSettlementPending.add(level);
+    }
+
+    /** Whether the level has a deferred stem-fruit settlement pending a re-scan. */
+    public static boolean hasStemSettlementPending(Level level) {
+        return stemSettlementPending.contains(level);
+    }
+
+    /** Consume the deferred stem-fruit settlement flag for the level. */
+    public static void clearStemSettlementPending(Level level) {
+        stemSettlementPending.remove(level);
+    }
+
+    /**
      * Rebase all tracked crop {@code plantedDay}s for a level after Ecliptic
      * Seasons rewinds the solar calendar (its {@code set} command). Shifts every
      * plantedDay back by {@code delta} so {@code currentDay - plantedDay} stays

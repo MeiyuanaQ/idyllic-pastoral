@@ -281,4 +281,19 @@ class CropSideEffectTest {
         // wipes the stem and the fruit is already present, so no re-placement.
         assertFalse(CropGrowthTracker.shouldPlaceStemFruitBeforeMutate(true, Blocks.ATTACHED_MELON_STEM));
     }
+
+    // ---- 8. Deferred stem settlement pending set (N1) ----------------------
+
+    @Test
+    void stemSettlementPending_markHasClear() {
+        // A fresh mock level starts unmarked; mark/has/clear round-trips. Each test
+        // uses a fresh Level instance, so the static WeakHashMap-backed set never
+        // leaks state across tests.
+        Level level = mock(Level.class);
+        assertFalse(CropGrowthTracker.hasStemSettlementPending(level));
+        CropGrowthTracker.markStemSettlementPending(level);
+        assertTrue(CropGrowthTracker.hasStemSettlementPending(level));
+        CropGrowthTracker.clearStemSettlementPending(level);
+        assertFalse(CropGrowthTracker.hasStemSettlementPending(level));
+    }
 }

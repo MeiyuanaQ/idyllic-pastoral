@@ -302,6 +302,20 @@ class CropGrowthTrackerTest {
     }
 
     @Test
+    void simulateStem_deferredRescan_converges() {
+        // N1/N5: a chunk-load deferral re-simulates on the periodic pass a few days
+        // later; the (mutated, fruited) outcome must be identical because the first
+        // unsuitable roll (attempt=0) is calendar-bound and independent of currentDay.
+        for (int currentDay = 44; currentDay <= 47; currentDay++) {
+            CropSimulation.StemSimulation sim = CropGrowthTracker.simulateStem(
+                    POS_KEY, 0, currentDay, 3, 3, 7, SEASON_LENGTH, SPRING_ONLY, 1.0, 0.0);
+            assertEquals(7, sim.stage());
+            assertTrue(sim.mutated());
+            assertTrue(sim.fruited());
+        }
+    }
+
+    @Test
     void simulateStem_yearRound_fruitsWithoutMutation() {
         CropSimulation.StemSimulation sim = CropGrowthTracker.simulateStem(
                 POS_KEY, 0, 30, 3, 3, 7, SEASON_LENGTH, ALL_SEASONS, 1.0, 1.0);
