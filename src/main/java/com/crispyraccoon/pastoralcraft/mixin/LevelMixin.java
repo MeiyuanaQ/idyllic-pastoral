@@ -2,6 +2,7 @@ package com.crispyraccoon.pastoralcraft.mixin;
 
 import com.crispyraccoon.pastoralcraft.crop.CropGrowthTracker;
 import com.crispyraccoon.pastoralcraft.crop.CropKindResolver;
+import com.crispyraccoon.pastoralcraft.crop.DebugProfiler;
 import com.crispyraccoon.pastoralcraft.crop.FlaxDiagnostics;
 import com.crispyraccoon.pastoralcraft.crop.InternalGrowthFlag;
 import com.crispyraccoon.pastoralcraft.crop.RegrowCrop;
@@ -130,9 +131,23 @@ public abstract class LevelMixin {
         // Re-entrancy guard: skip when internal growth operations are performing
         // setBlock calls to avoid duplicate recording. Both early-outs must run
         // before the revert frame is pushed so internal/nested calls stay paired.
-        if (self.isClientSide() || InternalGrowthFlag.INTERNAL_GROWTH.get()) {
+        if (self.isClientSide()) {
             return original.call(pos, newState, flags, recursionLimit);
         }
+        if (InternalGrowthFlag.INTERNAL_GROWTH.get()) {
+            // Internal growth writes (chunk-load/periodic catch-up, maturity
+            // side-effects) must ALSO suppress neighbor shape recomputation.
+            // BlockStateBase.updateNeighbourShapes walks all six neighbors and
+            // reads their block states via getBlockState -> getChunk, which
+            // deadlocks the server thread when the neighbor chunk is still
+            // loading during ChunkEvent.Load (the chunk-load catch-up freeze).
+            // UPDATE_KNOWN_SHAPE (16) makes Level.setBlock skip that walk.
+            return original.call(pos, newState, flags | Block.UPDATE_KNOWN_SHAPE, recursionLimit);
+        }
+
+        // Hot-path probe: count server-side, non-internal setBlock calls for the
+        // perf module. Only a volatile increment (no strings / ES API / NBT).
+        DebugProfiler.incrementSetBlock();
 
         // Every non-internal setBlock pushes a frame (NO_REVERT sentinel default)
         // onto the revert stack; the finally block below pops it. A REGROW

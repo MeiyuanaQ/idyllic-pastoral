@@ -1,0 +1,30 @@
+{
+  "replace": false,
+  "values": {
+    "minecraft:pitcher_crop": {
+      "doubleAge": 3
+    },
+    "supplementaries:flax": {
+      "doubleAge": 4
+    },
+    "farmersdelight:rice": {
+      "topBlock": "farmersdelight:rice_panicles"
+    },
+    "farmersdelight:budding_tomatoes": {
+      "transformBlock": "farmersdelight:tomatoes"
+    },
+    "farmersdelight:tomatoes": {
+      "climbBlock": "farmersdelight:tomatoes_on_rope",
+      "climbSupport": "farmersdelight:rope",
+      "maxClimbHeight": 2
+    },
+    "farmersdelight:tomatoes_on_rope": {
+      "climbBlock": "farmersdelight:tomatoes_on_rope",
+      "climbSupport": "farmersdelight:rope",
+      "maxClimbHeight": 2
+    },
+    "kaleidoscope_cookery:rice_crop": {
+      "segmentProperty": "location"
+    }
+  }
+}

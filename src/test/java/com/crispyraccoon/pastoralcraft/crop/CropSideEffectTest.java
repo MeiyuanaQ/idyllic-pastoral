@@ -46,10 +46,15 @@ class CropSideEffectTest {
 
     @BeforeAll
     static void ensureMinecraftBootstrapped() throws Exception {
-        // Bootstrap only once per JVM. CropKindResolverTest performs the same
-        // bootstrap; if it ran first, SharedConstants already carries a version.
-        if (SharedConstants.getCurrentVersion() != null) {
+        // Bootstrap once per JVM. CropKindResolverTest performs the same bootstrap;
+        // SharedConstants.getCurrentVersion() THROWS "Game version not set" when unset,
+        // so a bare != null probe cannot be used — catch it to decide whether another
+        // test class has already bootstrapped vanilla registries.
+        try {
+            SharedConstants.getCurrentVersion();
             return;
+        } catch (IllegalStateException unset) {
+            // Version not set yet — bootstrap below.
         }
         injectEmptyLoadingModList();
         setFakeGameVersion();
@@ -220,14 +225,13 @@ class CropSideEffectTest {
     // ---- 6. DOUBLE upper-half tracking skip --------------------------------
 
     @Test
-    void isDoubleCropUpperHalf_upperHalfWithDoubleOverride_true() {
+    void isDoubleCropUpperHalf_upperHalfWithDoubleDescriptor_true() {
         // A DOUBLE crop's UPPER half must be skipped by the tracker (only LOWER
-        // is followed); the doubleAge override marks it as a two-block crop.
+        // is followed); the doubleAge descriptor marks it as a two-block crop.
         BlockState upper = Blocks.PITCHER_CROP.defaultBlockState()
                 .setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER);
-        CropGrowthConfig.CropOverride doubleOverride =
-                new CropGrowthConfig.CropOverride(3, null, null, null, false, 4, true, null, null, 0);
-        assertTrue(CropGrowthTracker.isDoubleCropUpperHalf(upper, doubleOverride));
+        StructureDescriptor doubleDescriptor = new StructureDescriptor(4, null, null, null, null, 0, null);
+        assertTrue(CropGrowthTracker.isDoubleCropUpperHalf(upper, doubleDescriptor));
     }
 
     @Test
@@ -235,26 +239,46 @@ class CropSideEffectTest {
         // The LOWER half of a DOUBLE crop is the tracked half, never skipped.
         BlockState lower = Blocks.PITCHER_CROP.defaultBlockState()
                 .setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.LOWER);
-        CropGrowthConfig.CropOverride doubleOverride =
-                new CropGrowthConfig.CropOverride(3, null, null, null, false, 4, true, null, null, 0);
-        assertFalse(CropGrowthTracker.isDoubleCropUpperHalf(lower, doubleOverride));
+        StructureDescriptor doubleDescriptor = new StructureDescriptor(4, null, null, null, null, 0, null);
+        assertFalse(CropGrowthTracker.isDoubleCropUpperHalf(lower, doubleDescriptor));
     }
 
     @Test
-    void isDoubleCropUpperHalf_nullOverride_false() {
-        // No override means no DOUBLE marker — an UPPER half is not skipped.
+    void isDoubleCropUpperHalf_emptyDescriptor_false() {
+        // No structural declaration means no DOUBLE marker — an UPPER half is not skipped.
         BlockState upper = Blocks.PITCHER_CROP.defaultBlockState()
                 .setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER);
-        assertFalse(CropGrowthTracker.isDoubleCropUpperHalf(upper, null));
+        assertFalse(CropGrowthTracker.isDoubleCropUpperHalf(upper, CropStructureRegistry.EMPTY));
     }
 
     @Test
-    void isDoubleCropUpperHalf_nonDoubleOverride_false() {
+    void isDoubleCropUpperHalf_nonDoubleDescriptor_false() {
         // doubleAge < 0 marks a non-DOUBLE crop, so its UPPER half is not skipped.
         BlockState upper = Blocks.PITCHER_CROP.defaultBlockState()
                 .setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER);
-        CropGrowthConfig.CropOverride nonDoubleOverride =
-                new CropGrowthConfig.CropOverride(3, null, null, null, false, -1, false, null, null, 0);
-        assertFalse(CropGrowthTracker.isDoubleCropUpperHalf(upper, nonDoubleOverride));
+        StructureDescriptor nonDoubleDescriptor = new StructureDescriptor(-1, null, null, null, null, 0, null);
+        assertFalse(CropGrowthTracker.isDoubleCropUpperHalf(upper, nonDoubleDescriptor));
+    }
+
+    // ---- 7. Stem fruit re-placement before mutation -------------------------
+
+    @Test
+    void shouldPlaceStemFruitBeforeMutate_fruitedStemBlock_true() {
+        // An already-fruited plain StemBlock must re-place its fruit before the
+        // mutation wipes the stem, so the fruit (an independent block) is kept.
+        assertTrue(CropGrowthTracker.shouldPlaceStemFruitBeforeMutate(true, Blocks.MELON_STEM));
+    }
+
+    @Test
+    void shouldPlaceStemFruitBeforeMutate_notFruited_false() {
+        // An immature stem has nothing to re-place; mutation turns it to grass.
+        assertFalse(CropGrowthTracker.shouldPlaceStemFruitBeforeMutate(false, Blocks.MELON_STEM));
+    }
+
+    @Test
+    void shouldPlaceStemFruitBeforeMutate_attachedStem_false() {
+        // An attached stem already has its fruit in the world; the mutation only
+        // wipes the stem and the fruit is already present, so no re-placement.
+        assertFalse(CropGrowthTracker.shouldPlaceStemFruitBeforeMutate(true, Blocks.ATTACHED_MELON_STEM));
     }
 }

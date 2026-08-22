@@ -3,11 +3,13 @@ package com.crispyraccoon.pastoralcraft.crop;
 import com.teamtea.eclipticseasons.api.constant.solar.Season;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.EnumSet;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -55,7 +57,7 @@ class CropGrowthTrackerTest {
 
     @Test
     void simulateGrowth_allSeasonsSuitable_simpleDivision() {
-        CropGrowthTracker.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
                 POS_KEY, 0, 9, 3, 7, SEASON_LENGTH, ALL_SEASONS, false, MUTATE_CHANCE, GROW_CHANCE);
         assertEquals(3, sim.stage());
         assertFalse(sim.mutated());
@@ -64,7 +66,7 @@ class CropGrowthTrackerTest {
     @Test
     void simulateGrowth_springOnly_suitableDaysCounted() {
         // Days 0..8 all fall within spring (suitable): 9 / 3 = 3 stages.
-        CropGrowthTracker.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
                 POS_KEY, 0, 9, 3, 7, SEASON_LENGTH, SPRING_ONLY, false, MUTATE_CHANCE, GROW_CHANCE);
         assertEquals(3, sim.stage());
         assertFalse(sim.mutated());
@@ -75,7 +77,7 @@ class CropGrowthTrackerTest {
         // Spring (days 0..41) is suitable = 42 days; summer (42..49) is unsuitable.
         // With daysPerStage=5, suitable days yield 42 / 5 = 8 stages, and the
         // 8 unsuitable days must contribute nothing (frozen), and never mutate.
-        CropGrowthTracker.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
                 POS_KEY, 0, 50, 5, 100, SEASON_LENGTH, SPRING_ONLY, true, MUTATE_CHANCE, GROW_CHANCE);
         assertEquals(8, sim.stage());
         assertFalse(sim.mutated());
@@ -85,9 +87,9 @@ class CropGrowthTrackerTest {
     void simulateGrowth_arable_deterministicAcrossCalls() {
         // For arable crops in unsuitable seasons the outcome depends on a
         // deterministic hash; identical inputs must always yield the same result.
-        CropGrowthTracker.GrowthSimulation first = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation first = CropGrowthTracker.simulateGrowth(
                 POS_KEY, 0, 50, 5, 100, SEASON_LENGTH, SPRING_ONLY, false, MUTATE_CHANCE, GROW_CHANCE);
-        CropGrowthTracker.GrowthSimulation second = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation second = CropGrowthTracker.simulateGrowth(
                 POS_KEY, 0, 50, 5, 100, SEASON_LENGTH, SPRING_ONLY, false, MUTATE_CHANCE, GROW_CHANCE);
         assertEquals(first.stage(), second.stage());
         assertEquals(first.mutated(), second.mutated());
@@ -98,12 +100,12 @@ class CropGrowthTrackerTest {
         // Arable crops crossing into unsuitable seasons must always terminate
         // with a valid stage, be deterministic, and produce only legal outcomes.
         for (long posKey = 0; posKey < 50; posKey++) {
-            CropGrowthTracker.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
+            CropSimulation.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
                     posKey, 0, 130, 5, 100, SEASON_LENGTH, SPRING_ONLY, false, MUTATE_CHANCE, GROW_CHANCE);
             assertTrue(sim.stage() >= 0 && sim.stage() <= 100,
                     "stage out of bounds: " + sim.stage());
 
-            CropGrowthTracker.GrowthSimulation again = CropGrowthTracker.simulateGrowth(
+            CropSimulation.GrowthSimulation again = CropGrowthTracker.simulateGrowth(
                     posKey, 0, 130, 5, 100, SEASON_LENGTH, SPRING_ONLY, false, MUTATE_CHANCE, GROW_CHANCE);
             assertEquals(sim.stage(), again.stage());
             assertEquals(sim.mutated(), again.mutated());
@@ -112,7 +114,7 @@ class CropGrowthTrackerTest {
 
     @Test
     void simulateGrowth_timeRollback_returnsZero() {
-        CropGrowthTracker.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
                 POS_KEY, 50, 40, 5, 100, SEASON_LENGTH, SPRING_ONLY, false, MUTATE_CHANCE, GROW_CHANCE);
         assertEquals(0, sim.stage());
         assertFalse(sim.mutated());
@@ -123,9 +125,9 @@ class CropGrowthTrackerTest {
         // Invalid combo mutate=0.8 + grow=0.8 = 1.6 > 1.0 must be clamped so grow
         // becomes 1.0 - 0.8 = 0.2, keeping the "no growth" branch reachable and the
         // result deterministic (identical to passing the clamped values directly).
-        CropGrowthTracker.GrowthSimulation clamped = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation clamped = CropGrowthTracker.simulateGrowth(
                 POS_KEY, 0, 130, 5, 100, SEASON_LENGTH, SPRING_ONLY, false, 0.8, 0.8);
-        CropGrowthTracker.GrowthSimulation expected = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation expected = CropGrowthTracker.simulateGrowth(
                 POS_KEY, 0, 130, 5, 100, SEASON_LENGTH, SPRING_ONLY, false, 0.8, 0.2);
         assertEquals(expected.stage(), clamped.stage());
         assertEquals(expected.mutated(), clamped.mutated());
@@ -135,9 +137,9 @@ class CropGrowthTrackerTest {
     void simulateGrowth_chanceBoundaryOne_legalAndDeterministic() {
         // Boundary mutate=1.0 + grow=1.0 clamps grow to 0.0, matching the legal
         // mutate=1.0 + grow=0.0 combination; both must stay stage-bounded.
-        CropGrowthTracker.GrowthSimulation clamped = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation clamped = CropGrowthTracker.simulateGrowth(
                 POS_KEY, 0, 130, 5, 100, SEASON_LENGTH, SPRING_ONLY, false, 1.0, 1.0);
-        CropGrowthTracker.GrowthSimulation legal = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation legal = CropGrowthTracker.simulateGrowth(
                 POS_KEY, 0, 130, 5, 100, SEASON_LENGTH, SPRING_ONLY, false, 1.0, 0.0);
         assertTrue(clamped.stage() >= 0 && clamped.stage() <= 100, "stage out of bounds: " + clamped.stage());
         assertEquals(legal.stage(), clamped.stage());
@@ -244,7 +246,7 @@ class CropGrowthTrackerTest {
         // Planted near the end of spring (day 36). Days 37..41 are spring,
         // day 42 is the first summer (unsuitable) day. A single unsuitable day
         // must NOT roll for mutation (needs daysPerFruit=3 accumulated).
-        CropGrowthTracker.StemSimulation sim = CropGrowthTracker.simulateStem(
+        CropSimulation.StemSimulation sim = CropGrowthTracker.simulateStem(
                 POS_KEY, 36, 43, 3, 3, 7, SEASON_LENGTH, SPRING_ONLY, 1.0, 0.0);
         assertEquals(1, sim.stage()); // 5 suitable days: day 39 crosses stage 1
         assertFalse(sim.mutated());
@@ -269,7 +271,7 @@ class CropGrowthTrackerTest {
         // Planted at the start of spring (day 0). Matures after 21 days and
         // fruits after another daysPerFruit window; crossing into summer must
         // preserve the already-earned fruiting result and not mutate on day 1.
-        CropGrowthTracker.StemSimulation sim = CropGrowthTracker.simulateStem(
+        CropSimulation.StemSimulation sim = CropGrowthTracker.simulateStem(
                 POS_KEY, 0, 43, 3, 3, 7, SEASON_LENGTH, SPRING_ONLY, 0.0, 0.0);
         assertEquals(7, sim.stage());
         assertTrue(sim.fruited());
@@ -280,14 +282,28 @@ class CropGrowthTrackerTest {
     void simulateStem_matureStemMutatesInUnsuitableSeason() {
         // Planted at spring start, simulate deep into autumn. With mutateChance=1.0
         // the first full unsuitable (summer) window mutates the stem.
-        CropGrowthTracker.StemSimulation sim = CropGrowthTracker.simulateStem(
+        CropSimulation.StemSimulation sim = CropGrowthTracker.simulateStem(
                 POS_KEY, 0, 130, 3, 3, 7, SEASON_LENGTH, SPRING_ONLY, 1.0, 0.0);
         assertTrue(sim.mutated());
     }
 
     @Test
+    void simulateStem_fruitedThenMutates_keepsFruitedFlag() {
+        // Planted at spring start; matures (21 days) and fruits (3 more suitable
+        // days) inside spring, then crosses into summer where the first full
+        // unsuitable window (mutateChance=1.0) mutates it. The simulation must
+        // report both mutated AND fruited so processStem can re-place the fruit
+        // before the stem becomes short grass.
+        CropSimulation.StemSimulation sim = CropGrowthTracker.simulateStem(
+                POS_KEY, 0, 44, 3, 3, 7, SEASON_LENGTH, SPRING_ONLY, 1.0, 0.0);
+        assertEquals(7, sim.stage());
+        assertTrue(sim.mutated());
+        assertTrue(sim.fruited());
+    }
+
+    @Test
     void simulateStem_yearRound_fruitsWithoutMutation() {
-        CropGrowthTracker.StemSimulation sim = CropGrowthTracker.simulateStem(
+        CropSimulation.StemSimulation sim = CropGrowthTracker.simulateStem(
                 POS_KEY, 0, 30, 3, 3, 7, SEASON_LENGTH, ALL_SEASONS, 1.0, 1.0);
         assertEquals(7, sim.stage());
         assertTrue(sim.fruited());
@@ -296,9 +312,9 @@ class CropGrowthTrackerTest {
 
     @Test
     void simulateStem_deterministicAcrossCalls() {
-        CropGrowthTracker.StemSimulation first = CropGrowthTracker.simulateStem(
+        CropSimulation.StemSimulation first = CropGrowthTracker.simulateStem(
                 POS_KEY, 0, 130, 3, 3, 7, SEASON_LENGTH, SPRING_ONLY, 0.2, 0.2);
-        CropGrowthTracker.StemSimulation second = CropGrowthTracker.simulateStem(
+        CropSimulation.StemSimulation second = CropGrowthTracker.simulateStem(
                 POS_KEY, 0, 130, 3, 3, 7, SEASON_LENGTH, SPRING_ONLY, 0.2, 0.2);
         assertEquals(first.stage(), second.stage());
         assertEquals(first.mutated(), second.mutated());
@@ -321,12 +337,12 @@ class CropGrowthTrackerTest {
         int harvestDay = 234;
         int plantedDay = CropGrowthTracker.stemPlantedDayAfterHarvest(harvestDay, 7, 7, 3);
         // On the harvest day the stem is mature but has not yet fruited again.
-        CropGrowthTracker.StemSimulation atHarvest = CropGrowthTracker.simulateStem(
+        CropSimulation.StemSimulation atHarvest = CropGrowthTracker.simulateStem(
                 POS_KEY, plantedDay, harvestDay, 3, 3, 7, SEASON_LENGTH, ALL_SEASONS, 1.0, 1.0);
         assertEquals(7, atHarvest.stage());
         assertFalse(atHarvest.fruited());
         // daysPerFruit (3) days later it fruits again.
-        CropGrowthTracker.StemSimulation threeDaysLater = CropGrowthTracker.simulateStem(
+        CropSimulation.StemSimulation threeDaysLater = CropGrowthTracker.simulateStem(
                 POS_KEY, plantedDay, harvestDay + 3, 3, 3, 7, SEASON_LENGTH, ALL_SEASONS, 1.0, 1.0);
         assertEquals(7, threeDaysLater.stage());
         assertTrue(threeDaysLater.fruited());
@@ -352,7 +368,7 @@ class CropGrowthTrackerTest {
         // Planted day 0, bonemealed 0->1 at day 0 (plantedDay shifted to -3).
         int plantedDay = CropGrowthTracker.stemPlantedDayAfterBonemeal(0, 0, 0, 1, 3);
         // Three days later the stem must be at stage 2 — not stalled at stage 1.
-        CropGrowthTracker.StemSimulation sim = CropGrowthTracker.simulateStem(
+        CropSimulation.StemSimulation sim = CropGrowthTracker.simulateStem(
                 POS_KEY, plantedDay, 3, 3, 3, 7, SEASON_LENGTH, ALL_SEASONS, 1.0, 1.0);
         assertEquals(2, sim.stage());
     }
@@ -389,7 +405,7 @@ class CropGrowthTrackerTest {
                 120, 8, 7, springAutumn, SEASON_LENGTH));
         // Round-trip: simulating from the back-calculated plantedDay to currentDay
         // must reproduce exactly the aligned accelerated stage (6), never mutate.
-        CropGrowthTracker.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
                 POS_KEY, 78, 120, 7, 8, SEASON_LENGTH, springAutumn, false, MUTATE_CHANCE, GROW_CHANCE);
         assertEquals(6, sim.stage());
         assertFalse(sim.mutated());
@@ -404,7 +420,7 @@ class CropGrowthTrackerTest {
         int daysPerStage = 3;
         int plantedDay = CropGrowthTracker.backCalculatePlantedDaySuitable(
                 currentDay, newAge, daysPerStage, SPRING_ONLY, SEASON_LENGTH);
-        CropGrowthTracker.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
                 POS_KEY, plantedDay, currentDay, daysPerStage, newAge, SEASON_LENGTH,
                 SPRING_ONLY, false, MUTATE_CHANCE, GROW_CHANCE);
         assertEquals(newAge, sim.stage());
@@ -447,7 +463,7 @@ class CropGrowthTrackerTest {
                 30, 4, 26, 3, SPRING_ONLY, SEASON_LENGTH);
         assertEquals(21, plantedDay);
         // HEIGHT target height = stage + 1; kelp is non-arable (freeze semantics).
-        CropGrowthTracker.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
                 POS_KEY, plantedDay, 30, 3, 25, SEASON_LENGTH,
                 SPRING_ONLY, true, MUTATE_CHANCE, GROW_CHANCE);
         assertEquals(3, sim.stage());
@@ -474,7 +490,7 @@ class CropGrowthTrackerTest {
         // stage 1 → target height 2, aligned with the actual height 2 (no stall).
         int plantedDay = CropGrowthTracker.heightCropPlantedDayAfterBonemeal(
                 30, 2, 26, 3, SPRING_ONLY, SEASON_LENGTH);
-        CropGrowthTracker.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
+        CropSimulation.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
                 POS_KEY, plantedDay, 30, 3, 25, SEASON_LENGTH,
                 SPRING_ONLY, true, MUTATE_CHANCE, GROW_CHANCE);
         assertEquals(1, sim.stage());
@@ -486,5 +502,102 @@ class CropGrowthTrackerTest {
         // newHeight 1 → newAge 0 → no back-shift (plantedDay stays currentDay).
         assertEquals(100, CropGrowthTracker.heightCropPlantedDayAfterBonemeal(
                 100, 1, 26, 3, ALL_SEASONS, SEASON_LENGTH));
+    }
+
+    // ---- catch-up elapsed clamp (freeze fix) ------------------------------
+
+    @Test
+    void clampSimDay_zeroMaxElapsed_noClamp() {
+        assertEquals(100, CropGrowthTracker.clampSimDay(0, 100, 0));
+    }
+
+    @Test
+    void clampSimDay_withinHorizon_unchanged() {
+        assertEquals(100, CropGrowthTracker.clampSimDay(0, 100, 336));
+        assertEquals(-50, CropGrowthTracker.clampSimDay(-100, -50, 336));
+    }
+
+    @Test
+    void clampSimDay_beyondHorizon_clampedToHorizon() {
+        assertEquals(336, CropGrowthTracker.clampSimDay(0, 10_000, 336));
+        // horizon = -250 + 336 = 86
+        assertEquals(86, CropGrowthTracker.clampSimDay(-250, 10_000, 336));
+    }
+
+    @Test
+    void clampSimDay_overflowSafe() {
+        // plantedDay near Integer.MAX_VALUE: the long horizon exceeds int range but
+        // currentDay must stay unchanged rather than clamping to a bogus wrapped value.
+        assertEquals(Integer.MAX_VALUE - 5,
+                CropGrowthTracker.clampSimDay(Integer.MAX_VALUE - 10, Integer.MAX_VALUE - 5, 336));
+    }
+
+    @Test
+    void simulateGrowth_hugeElapsed_terminatesQuicklyAndBounded() {
+        // A massive calendar jump must not hang: the fail-fast clamp bounds the
+        // attempt loop. assertTimeoutPreemptively enforces a hard wall-clock bound.
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+            CropSimulation.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
+                    POS_KEY, 0, Integer.MAX_VALUE, 3, 7, SEASON_LENGTH, SPRING_ONLY, false, MUTATE_CHANCE, GROW_CHANCE);
+            assertTrue(sim.stage() >= 0 && sim.stage() <= 7, "stage out of bounds: " + sim.stage());
+        });
+    }
+
+    @Test
+    void simulateGrowth_hugeElapsed_equalsClampedWindow() {
+        // The fail-fast clamp collapses currentDay to plantedDay + HARD_MAX_ELAPSED_DAYS,
+        // so simulating the huge value must equal simulating the clamped window.
+        int plantedDay = 0;
+        int clampedDay = plantedDay + CropGrowthTracker.HARD_MAX_ELAPSED_DAYS;
+        CropSimulation.GrowthSimulation huge = CropGrowthTracker.simulateGrowth(
+                POS_KEY, plantedDay, Integer.MAX_VALUE, 3, 7, SEASON_LENGTH, SPRING_ONLY, false, MUTATE_CHANCE, GROW_CHANCE);
+        CropSimulation.GrowthSimulation clamped = CropGrowthTracker.simulateGrowth(
+                POS_KEY, plantedDay, clampedDay, 3, 7, SEASON_LENGTH, SPRING_ONLY, false, MUTATE_CHANCE, GROW_CHANCE);
+        assertEquals(clamped.stage(), huge.stage());
+        assertEquals(clamped.mutated(), huge.mutated());
+    }
+
+    @Test
+    void simulateGrowth_negativePlantedDay_terminatesAndBounded() {
+        // A corrupted negative plantedDay must not hang; the clamp keeps the window
+        // bounded even when currentDay - plantedDay would otherwise overflow/hugely.
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+            CropSimulation.GrowthSimulation sim = CropGrowthTracker.simulateGrowth(
+                    POS_KEY, Integer.MIN_VALUE + 5, Integer.MAX_VALUE, 3, 7, SEASON_LENGTH,
+                    SPRING_ONLY, false, MUTATE_CHANCE, GROW_CHANCE);
+            assertTrue(sim.stage() >= 0 && sim.stage() <= 7, "stage out of bounds: " + sim.stage());
+        });
+    }
+
+    @Test
+    void simulateStem_hugeElapsed_terminatesQuicklyAndBounded() {
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+            CropSimulation.StemSimulation sim = CropGrowthTracker.simulateStem(
+                    POS_KEY, 0, Integer.MAX_VALUE, 3, 3, 7, SEASON_LENGTH, SPRING_ONLY, MUTATE_CHANCE, 0.2);
+            assertTrue(sim.stage() >= 0 && sim.stage() <= 7, "stage out of bounds: " + sim.stage());
+        });
+    }
+
+    @Test
+    void simulateStem_hugeElapsed_equalsClampedWindow() {
+        int plantedDay = 0;
+        int clampedDay = plantedDay + CropGrowthTracker.HARD_MAX_ELAPSED_DAYS;
+        CropSimulation.StemSimulation huge = CropGrowthTracker.simulateStem(
+                POS_KEY, plantedDay, Integer.MAX_VALUE, 3, 3, 7, SEASON_LENGTH, SPRING_ONLY, MUTATE_CHANCE, 0.2);
+        CropSimulation.StemSimulation clamped = CropGrowthTracker.simulateStem(
+                POS_KEY, plantedDay, clampedDay, 3, 3, 7, SEASON_LENGTH, SPRING_ONLY, MUTATE_CHANCE, 0.2);
+        assertEquals(clamped.stage(), huge.stage());
+        assertEquals(clamped.mutated(), huge.mutated());
+        assertEquals(clamped.fruited(), huge.fruited());
+    }
+
+    @Test
+    void simulateStem_futurePlantedDay_returnsFreshStem() {
+        // plantedDay in the future (rollback guard): stage 0, no mutate, no fruit.
+        CropSimulation.StemSimulation sim = CropGrowthTracker.simulateStem(
+                POS_KEY, 1000, 10, 3, 3, 7, SEASON_LENGTH, SPRING_ONLY, 1.0, 1.0);
+        assertEquals(0, sim.stage());
+        assertFalse(sim.mutated());
+        assertFalse(sim.fruited());
     }
 }

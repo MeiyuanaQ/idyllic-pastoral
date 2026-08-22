@@ -81,6 +81,43 @@ public class CropGrowthConfig {
                     "Must match the Ecliptic Seasons 'LastingDaysOfEachTerm' setting (default 7 days).")
             .defineInRange("catchUpSeasonLength", 7, 1, 365);
 
+    /**
+     * Per-invocation time budget (milliseconds) for a single chunk-load or periodic
+     * catch-up pass. When the entry loop exceeds this budget, the pass is cut short
+     * and the remaining entries are deferred to the next 200-tick periodic cycle.
+     * This bounds worst-case server-thread blocking on huge / long-elapsed chunks.
+     * Set to 0 to disable the budget (process the whole chunk in one pass).
+     */
+    public static final ModConfigSpec.IntValue CATCH_UP_TIME_BUDGET_MS = BUILDER
+            .comment("Per-invocation time budget (milliseconds) for a single chunk-load",
+                    "or periodic catch-up pass. When exceeded, remaining entries are deferred",
+                    "to the next periodic cycle instead of blocking the server thread.",
+                    "Set to 0 to disable the budget (process the whole chunk in one pass).")
+            .defineInRange("catchUpTimeBudgetMs", 8, 0, 60000);
+
+    /**
+     * Upper bound (solar days) on how much elapsed time a single catch-up
+     * simulation may span. {@code simulateGrowth} / {@code simulateStem} clamp
+     * {@code currentDay} to {@code plantedDay + maxCatchUpElapsedDays}, so a large
+     * Ecliptic Seasons calendar jump can never make the per-crop simulation loop
+     * unboundedly long (the freeze bug).
+     *
+     * <p>Default 336 = 2 Ecliptic Seasons years (1 year = 24 terms x 7 days = 168
+     * days). A crop older than the horizon converges to the terminal state that the
+     * first {@code maxCatchUpElapsedDays} days of deterministic simulation produce
+     * (mature in suitable seasons, mutated/frozen otherwise) instead of iterating
+     * every elapsed day.</p>
+     */
+    public static final ModConfigSpec.IntValue MAX_CATCH_UP_ELAPSED_DAYS = BUILDER
+            .comment("Upper bound (solar days) on the elapsed time a single catch-up",
+                    "simulation may span. simulateGrowth/simulateStem clamp currentDay to",
+                    "plantedDay + maxCatchUpElapsedDays so a large Ecliptic Seasons day",
+                    "jump never makes the per-crop simulation loop unboundedly long (freeze).",
+                    "Default 336 = 2 Ecliptic Seasons years (1 year = 24 terms x 7 days = 168 days).",
+                    "Crops older than the horizon converge to their mature/mutated/frozen",
+                    "terminal state instead of simulating every elapsed day.")
+            .defineInRange("maxCatchUpElapsedDays", 336, 1, 3650);
+
     /** Number of Solar Terms per Season (fixed structure of Ecliptic Seasons). */
     public static final int SOLAR_TERMS_PER_SEASON = 6;
 
@@ -117,6 +154,69 @@ public class CropGrowthConfig {
                     "Logs use the [FlaxDiag] prefix and go to debug.log.",
                     "Default: false")
             .define("debugFlaxAll", false);
+
+    // =======================================================================
+    // Debug system — modular switches (all default-off; see DebugGate)
+    // =======================================================================
+
+    /** Enable growth-path debug logging (crop/height crops advancing, harvest/bonemeal/entry create-remove). */
+    public static final ModConfigSpec.BooleanValue DEBUG_GROWTH = BUILDER
+            .comment("Enable growth-path debug logging (crop/height crops advancing,",
+                    "harvest/bonemeal/entry create-remove).")
+            .define("debugGrowth", false);
+
+    /** Enable stem debug logging (fruiting, mutation, bonemeal, harvest). */
+    public static final ModConfigSpec.BooleanValue DEBUG_STEM = BUILDER
+            .comment("Enable stem debug logging (fruiting, mutation, bonemeal, harvest).")
+            .define("debugStem", false);
+
+    /** Enable maturity side-effect debug logging (transform/companion/bonemeal fallback/double upper half). */
+    public static final ModConfigSpec.BooleanValue DEBUG_SIDE_EFFECT = BUILDER
+            .comment("Enable maturity side-effect debug logging (transform/companion/",
+                    "bonemeal fallback/double upper half).")
+            .define("debugSideEffect", false);
+
+    /** Enable catch-up summary debug logging (chunk load/periodic aggregation, NBT save/load counts). */
+    public static final ModConfigSpec.BooleanValue DEBUG_CATCH_UP = BUILDER
+            .comment("Enable catch-up summary debug logging (chunk load/periodic aggregation,",
+                    "NBT save/load counts).")
+            .define("debugCatchUp", false);
+
+    /** Enable crop-data health scans on catch-up entry (negative / over-horizon plantedDay detection). */
+    public static final ModConfigSpec.BooleanValue DEBUG_DATA = BUILDER
+            .comment("Enable crop-data health scans on catch-up entry (negative /",
+                    "over-horizon plantedDay detection).")
+            .define("debugData", false);
+
+    /** Enable performance profiling (timed sections + setBlock counter). */
+    public static final ModConfigSpec.BooleanValue DEBUG_PERF = BUILDER
+            .comment("Enable performance profiling (timed sections + setBlock counter).")
+            .define("debugPerf", false);
+
+    /** Enable the in-memory ring event buffer for crash-site tracing. */
+    public static final ModConfigSpec.BooleanValue DEBUG_RING = BUILDER
+            .comment("Enable the in-memory ring event buffer for crash-site tracing.")
+            .define("debugRing", false);
+
+    /** Register the /pastoralcraft debug commands (status/dump/reset). */
+    public static final ModConfigSpec.BooleanValue DEBUG_COMMANDS = BUILDER
+            .comment("Register the /pastoralcraft debug commands (status/dump/reset).")
+            .define("debugCommands", false);
+
+    /** Slow-path warning threshold in milliseconds (debugPerf). */
+    public static final ModConfigSpec.IntValue DEBUG_PERF_WARN_MS = BUILDER
+            .comment("Slow-path warning threshold in milliseconds (debugPerf).")
+            .defineInRange("debugPerfWarnMs", 10, 1, 60000);
+
+    /** Capacity of the debug ring buffer (debugRing). */
+    public static final ModConfigSpec.IntValue DEBUG_RING_SIZE = BUILDER
+            .comment("Capacity of the debug ring buffer (debugRing).")
+            .defineInRange("debugRingSize", 2048, 256, 65536);
+
+    /** Write a debug dump file to the server logs directory on shutdown. */
+    public static final ModConfigSpec.BooleanValue DEBUG_DUMP_ON_STOP = BUILDER
+            .comment("Write a debug dump file to the server logs directory on shutdown.")
+            .define("debugDumpOnStop", true);
 
     /**
      * Default seasons for crops that have no season information at all — neither
@@ -179,7 +279,7 @@ public class CropGrowthConfig {
      * entries in {@link #CROP_OVERRIDE_STRINGS} take precedence.
      *
      * <p>Keyed by block id, values use the same {@code key=value,...} syntax as
-     * the user-facing config. See section 6 of plans/crop-support-redesign.md.</p>
+     * the user-facing config.</p>
      */
     private static final List<String> BUILT_IN_OVERRIDES = List.of(
             // Kelp: height-based growth is auto-detected, no topBlock needed.
@@ -187,23 +287,29 @@ public class CropGrowthConfig {
             // Farmers Delight rice: spawn rice_panicles above when mature. FD native advances only
             // when the position above is AIR (the rice has emerged above the water surface), so no
             // water=true here — it would require water above and block the panicles forever.
-            "farmersdelight:rice=daysPerStage=3,topBlock=farmersdelight:rice_panicles",
+            // The COMPANION top block is declared structurally in the crop_structure data map
+            // (see CropStructureRegistry), not here.
+            "farmersdelight:rice=daysPerStage=3",
             // Farmers Delight rice panicles: CropBlock (AGE 0-3). Already auto-non-arable via the
             // below-block water-crop rule (rice is a LiquidBlockContainer + recognized crop);
             // freeze=true documents the intent explicitly.
             "farmersdelight:rice_panicles=daysPerStage=3,freeze=true",
             // Farmers Delight tomato stage 1 (budding_tomatoes): one stage per suitable day, freezes
             // in unsuitable seasons, and transforms into the full tomato crop when mature.
-            "farmersdelight:budding_tomatoes=daysPerStage=1,transformBlock=farmersdelight:tomatoes,freeze=true",
+            // The TRANSFORM target is declared structurally in the crop_structure data map.
+            "farmersdelight:budding_tomatoes=daysPerStage=1,freeze=true",
             // Farmers Delight tomato stage 2 (tomatoes): 3-day fruit rhythm, freezes in unsuitable
             // seasons, climbs the rope family (tomatoes_on_rope) one segment per suitable day, capped
-            // at maxClimbHeight (max 2 blocks up, per the user's expected life cycle).
-            "farmersdelight:tomatoes=daysPerStage=3,freeze=true,climbBlock=farmersdelight:tomatoes_on_rope,climbSupport=farmersdelight:rope,maxClimbHeight=2",
-            "farmersdelight:tomatoes_on_rope=daysPerStage=3,freeze=true,climbBlock=farmersdelight:tomatoes_on_rope,climbSupport=farmersdelight:rope,maxClimbHeight=2",
+            // at maxClimbHeight. The climb family/max height are declared structurally in the
+            // crop_structure data map.
+            "farmersdelight:tomatoes=daysPerStage=3,freeze=true",
+            "farmersdelight:tomatoes_on_rope=daysPerStage=3,freeze=true",
             // Supplementaries flax: two-block crop; upper half (HALF=UPPER) syncs its age with the lower.
-            "supplementaries:flax=daysPerStage=3,doubleAge=4,freeze=true",
+            // The doubleAge is declared structurally in the crop_structure data map.
+            "supplementaries:flax=daysPerStage=3,freeze=true",
             // Vanilla pitcher crop: two-block crop; the upper half appears once the lower reaches age 3.
-            "minecraft:pitcher_crop=daysPerStage=3,doubleAge=3",
+            // The doubleAge is declared structurally in the crop_structure data map.
+            "minecraft:pitcher_crop=daysPerStage=3",
             // AHP sunflower: regrows every 3 suitable days. Explicit spring+autumn so it freezes in
             // summer and winter like other untagged crops (the AHP block carries no season tag).
             // Note: the seasons value uses underscores because the override string itself is
@@ -327,6 +433,13 @@ public class CropGrowthConfig {
         }
         cachedOverrides = Map.copyOf(map);
         CropGrowthTracker.clearFreezeCache();
+        // Structural descriptors merge config structure keys, so a config reload
+        // must invalidate the merged-structure cache too.
+        CropStructureRegistry.clearCache();
+
+        // Republish the cached debug gate bitmask so hot config reloads are
+        // reflected without a restart.
+        DebugGate.refreshCache();
 
         // Cross-validate the unsuitable-season three-way roll: mutate + grow must
         // not exceed 1.0, otherwise the "no growth" branch can never be reached.

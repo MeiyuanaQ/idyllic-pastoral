@@ -34,6 +34,16 @@ class CropKindResolverTest {
 
     @BeforeAll
     static void bootstrapMinecraftRegistries() throws Exception {
+        // Bootstrap once per JVM, shared with CropSideEffectTest. SharedConstants
+        // .getCurrentVersion() THROWS "Game version not set" when unset, so a bare
+        // != null probe cannot be used — catch it to decide whether another test
+        // class has already bootstrapped vanilla registries.
+        try {
+            SharedConstants.getCurrentVersion();
+            return;
+        } catch (IllegalStateException unset) {
+            // Version not set yet — bootstrap below.
+        }
         // Constructing a vanilla BlockBehaviour.Properties touches SoundType ->
         // SoundEvents -> BuiltInRegistries, which require the registry bootstrap that
         // normally runs once at game startup.

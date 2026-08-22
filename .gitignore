@@ -30,3 +30,6 @@ src/generated/resources/.cache/
 
 # Development
 *.bbmodel
+
+# Local reference source (Mojang/NeoForge decompiled sources) — not committed
+reference/
