@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.BushBlock;
+import net.minecraft.world.level.block.CactusBlock;
 import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.GrowingPlantBlock;
 import net.minecraft.world.level.block.KelpBlock;
@@ -45,6 +46,9 @@ public final class CropKindResolver {
 
     /** Maximum total height (including the root) for kelp (head AGE caps at 25). */
     public static final int KELP_MAX_HEIGHT = 26;
+
+    /** Maximum total height (including the root) for cactus (vanilla cap 3). */
+    public static final int CACTUS_MAX_HEIGHT = 3;
 
     private static final Map<Block, CropKind> KIND_CACHE = new ConcurrentHashMap<>();
     private static final Map<Block, AgeCrop> AGE_CACHE = new ConcurrentHashMap<>();
@@ -173,6 +177,9 @@ public final class CropKindResolver {
         }
         if (block instanceof KelpPlantBlock) {
             return new HeightCrop(KELP_MAX_HEIGHT, Blocks.KELP_PLANT, true);
+        }
+        if (block instanceof CactusBlock) {
+            return new HeightCrop(CACTUS_MAX_HEIGHT, Blocks.CACTUS, false);
         }
         return null;
     }

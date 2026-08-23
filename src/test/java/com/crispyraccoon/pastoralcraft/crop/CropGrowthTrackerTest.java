@@ -425,6 +425,32 @@ class CropGrowthTrackerTest {
         assertFalse(sim.mutated());
     }
 
+    // ---- crop bonemeal B rule (arable: full shift when current day is suitable) --
+
+    @Test
+    void backCalculatePlantedDayForArableBonemeal_earlySpringCrossesWinter_fullShift() {
+        // Early spring, current day itself is suitable, but a full shift crosses
+        // into winter. B must still shift the full span so the crop does not stall.
+        Set<Season> springAutumn = EnumSet.of(Season.SPRING, Season.AUTUMN);
+        assertEquals(-7, CropGrowthTracker.backCalculatePlantedDayForArableBonemeal(
+                5, 4, 3, springAutumn, SEASON_LENGTH));
+    }
+
+    @Test
+    void backCalculatePlantedDayForArableBonemeal_currentUnsuitable_noShift() {
+        // Current day is summer (unsuitable for a spring-only crop): B keeps
+        // plantedDay unchanged so unsuitable-season behavior stays conservative.
+        assertEquals(45, CropGrowthTracker.backCalculatePlantedDayForArableBonemeal(
+                45, 3, 3, SPRING_ONLY, SEASON_LENGTH));
+    }
+
+    @Test
+    void backCalculatePlantedDayForArableBonemeal_currentSuitableCrossesSummer_fullShift() {
+        Set<Season> springAutumn = EnumSet.of(Season.SPRING, Season.AUTUMN);
+        assertEquals(64, CropGrowthTracker.backCalculatePlantedDayForArableBonemeal(
+                120, 8, 7, springAutumn, SEASON_LENGTH));
+    }
+
     @Test
     void backCalculatePlantedDaySuitable_roundTrip_alignsWithSimulateGrowth() {
         // Generic assertion: within a continuous suitable span, simulating from the

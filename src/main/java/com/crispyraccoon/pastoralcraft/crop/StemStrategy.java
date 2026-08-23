@@ -42,8 +42,7 @@ public final class StemStrategy {
      * the deterministic check order). Falls back to EAST then NORTH when the
      * configured list is empty or unparsable.
      */
-    private static Direction[] allowedStemFruitDirections() {
-        String cfg = CropGrowthConfig.STEM_FRUIT_DIRECTIONS.get();
+    private static Direction[] allowedStemFruitDirections(String cfg) {
         List<Direction> dirs = new ArrayList<>();
         for (String part : cfg.split("[, ]+")) {
             switch (part.trim().toLowerCase(Locale.ROOT)) {
@@ -99,7 +98,7 @@ public final class StemStrategy {
         }
 
         // Check the configured horizontal directions in deterministic order.
-        Direction[] directions = allowedStemFruitDirections();
+        Direction[] directions = allowedStemFruitDirections(CropGrowthConfig.getFruitDirections(stemId));
         for (Direction dir : directions) {
             BlockPos fruitPos = pos.relative(dir);
             BlockState fruitTarget = level.getBlockState(fruitPos);
@@ -187,13 +186,14 @@ public final class StemStrategy {
         Block anchor = CropClassifier.stemAnchor(state.getBlock());
         ResourceLocation anchorId = BuiltInRegistries.BLOCK.getKey(anchor);
         int daysPerStage = CropGrowthConfig.getDaysPerStage(anchorId);
-        int daysPerFruit = CropGrowthConfig.DAYS_PER_FRUIT.get();
+        int daysPerFruit = CropGrowthConfig.getDaysPerFruit(anchorId);
         Set<Season> suitableSeasons = CropCalendar.resolveSuitableSeasons(currentSeason, anchor);
 
         CropSimulation.StemSimulation sim = CropSimulation.simulateStem(pos.asLong(), progress.plantedDay, currentDay,
                 daysPerStage, daysPerFruit, StemBlock.MAX_AGE, seasonLength, suitableSeasons,
-                CropGrowthConfig.STEM_UNSUITABLE_MUTATE_CHANCE.get(),
-                CropGrowthConfig.STEM_UNSUITABLE_FRUIT_CHANCE.get());
+                CropGrowthConfig.getStemUnsuitableMutateChance(anchorId),
+                CropGrowthConfig.getStemUnsuitableFruitChance(anchorId),
+                CropGrowthConfig.getStemUnsuitableGrowChance(anchorId));
 
         if (sim.mutated()) {
             // 已结瓜但果实尚未落地的普通茎(StemBlock):chunk-load 补涨不得先变异 ——

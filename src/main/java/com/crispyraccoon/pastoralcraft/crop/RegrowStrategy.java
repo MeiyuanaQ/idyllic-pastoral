@@ -60,7 +60,9 @@ public final class RegrowStrategy {
         Set<Season> suitableSeasons = CropCalendar.resolveSuitableSeasons(ctx.currentSeason, block);
 
         CropSimulation.GrowthSimulation sim = CropSimulation.simulateGrowth(pos, progress.plantedDay, ctx.currentDay,
-                daysPerStage, 1, ctx.seasonLength, suitableSeasons, true);
+                daysPerStage, 1, ctx.seasonLength, suitableSeasons, true,
+                CropGrowthConfig.getUnsuitableMutateChance(cropId),
+                CropGrowthConfig.getUnsuitableGrowChance(cropId));
 
         if (sim.stage() >= 1) {
             BlockWriter.internalSetBlock(ctx.level, pos, state.setValue(product, true), BlockWriter.FLAG_UPDATE_CLIENTS);

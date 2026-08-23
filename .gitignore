@@ -33,3 +33,18 @@ src/generated/resources/.cache/
 
 # Local reference source (Mojang/NeoForge decompiled sources) — not committed
 reference/
+
+# Workspace snapshot backups
+backups/
+
+# Editor state
+.vscode/
+
+# Third-party jars (restored locally per AGENTS.md; not committed)
+libs/
+
+# Runtime logs captured for reference
+docs/environment/*.log
+
+# Auto-incremented build counter (regenerated per build)
+build_number.properties

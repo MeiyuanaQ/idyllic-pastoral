@@ -11,6 +11,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CactusBlock;
 import net.minecraft.world.level.block.KelpBlock;
 import net.minecraft.world.level.block.KelpPlantBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -202,6 +203,21 @@ public abstract class LevelMixin {
                 }
             }
 
+            // --- Cactus bottom-only tracking ---
+            // Only the bottom (root) block is tracked. When a non-bottom block is
+            // replaced (cactus -> non-crop), reset the root's plantedDay so the
+            // surviving stalk continues growth from its current height. Mirrors
+            // the sugar cane rule above.
+            if (isOldCrop && oldBlock instanceof CactusBlock) {
+                BlockState below = self.getBlockState(pos.below());
+                if (below.getBlock() instanceof CactusBlock) {
+                    isOldCrop = false;
+                    if (!isNewCrop) {
+                        CropGrowthTracker.onCactusHarvest(self, pos);
+                    }
+                }
+            }
+
             // --- Kelp bottom-only tracking + internal head/stem conversion ---
             // Kelp grows by converting its top KelpBlock into a KelpPlantBlock and
             // placing a fresh KelpBlock above (see CropGrowthTracker.growKelp). That
@@ -240,6 +256,9 @@ public abstract class LevelMixin {
                 } else if (newBlock instanceof net.minecraft.world.level.block.SugarCaneBlock
                         && belowBlock instanceof net.minecraft.world.level.block.SugarCaneBlock) {
                     CropGrowthTracker.onSugarCaneBonemeal(self, pos);
+                } else if (newBlock instanceof CactusBlock
+                        && belowBlock instanceof CactusBlock) {
+                    CropGrowthTracker.onCactusBonemeal(self, pos);
                 } else {
                     CropGrowthTracker.getOrCreate(pos, self, newState);
                 }

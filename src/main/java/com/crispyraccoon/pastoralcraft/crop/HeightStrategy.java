@@ -9,6 +9,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CactusBlock;
 import net.minecraft.world.level.block.SugarCaneBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -162,6 +163,125 @@ public final class HeightStrategy {
                     root, newHeight, plantedDay, entry.plantedDay);
         } else {
             CropGrowthTracker.logDebug("Sugar cane bonemeal (new track): root={} newHeight={} plantedDay={}",
+                    root, newHeight, plantedDay);
+        }
+    }
+
+    // =======================================================================
+    // Cactus — deterministic height-based growth (vanilla cactus)
+    // =======================================================================
+
+    /**
+     * Count the height of a cactus stalk at the given position.
+     * Counts upward from the given position (which should be the bottom block)
+     * and includes all consecutive cactus blocks.
+     *
+     * @param level the world level
+     * @param pos   the bottom cactus block position
+     * @return the stalk height (1-3), or 0 if the block is not cactus
+     */
+    static int getCactusHeight(Level level, BlockPos pos) {
+        if (!(level.getBlockState(pos).getBlock() instanceof CactusBlock)) return 0;
+        int height = 0;
+        BlockPos checkPos = pos;
+        while (level.getBlockState(checkPos).getBlock() instanceof CactusBlock && height < 5) {
+            height++;
+            checkPos = checkPos.above();
+        }
+        return height;
+    }
+
+    /**
+     * Grow a cactus stalk by placing a new block on top.
+     * Only grows if the current height is less than the maximum (3).
+     *
+     * @param level the world level
+     * @param pos   the bottom cactus block position
+     * @param currentHeight the current stalk height
+     * @return true if cactus was grown (a new block was placed)
+     */
+    static boolean growCactus(Level level, BlockPos pos, int currentHeight) {
+        if (currentHeight >= CropKindResolver.CACTUS_MAX_HEIGHT) return false;
+        BlockPos topPos = pos.above(currentHeight);
+        if (level.getBlockState(topPos).isAir()) {
+            BlockWriter.internalSetBlock(level, topPos, Blocks.CACTUS.defaultBlockState(), BlockWriter.FLAG_UPDATE_CLIENTS);
+            CropGrowthTracker.logDebug("Cactus grew: bottom={} new height={}", pos, currentHeight + 1);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Handle cactus harvest: a non-bottom cactus block at {@code harvestedPos}
+     * is being removed (e.g. the player broke the second or third block of the
+     * stalk). Mirrors {@link #onSugarCaneHarvest}: the root's
+     * {@link CropProgressEntry#plantedDay} is back-calculated so the surviving
+     * blocks keep their accumulated height progress.
+     */
+    public static void onCactusHarvest(Level level, BlockPos harvestedPos) {
+        BlockPos root = harvestedPos;
+        int depth = 0;
+        while (level.getBlockState(root.below()).getBlock() instanceof CactusBlock && depth < 8) {
+            root = root.below();
+            depth++;
+        }
+
+        int currentDay = CropGrowthTracker.getSolarDays(level);
+        int daysPerStage = CropGrowthConfig.getDaysPerStage(
+                BuiltInRegistries.BLOCK.getKey(Blocks.CACTUS));
+
+        int remainingHeight = Math.max(1, harvestedPos.getY() - root.getY());
+
+        int plantedDay = currentDay - (remainingHeight - 1) * daysPerStage;
+        if (plantedDay > currentDay) {
+            plantedDay = currentDay;
+        }
+
+        LevelChunk chunk = level.getChunkAt(root);
+        ChunkCropData chunkData = (ChunkCropData) chunk;
+        Map<BlockPos, CropProgressEntry> cropData = chunkData.pastoralcraft$getCropData();
+        cropData.put(root, new CropProgressEntry(plantedDay));
+        CropGrowthTracker.registerTrackedChunk(chunk);
+
+        CropGrowthTracker.logDebug("Cactus harvested: harvested={} root={} remainingHeight={} plantedDay={}",
+                harvestedPos, root, remainingHeight, plantedDay);
+    }
+
+    /**
+     * Account for a cactus stalk being accelerated by an external mod placing a
+     * cactus block above the head. Mirrors {@link #onSugarCaneBonemeal}: back-shift
+     * the root plantedDay by the accelerated stages (only backward shifts apply).
+     */
+    public static void onCactusBonemeal(Level level, BlockPos headPos) {
+        BlockPos root = headPos;
+        int depth = 0;
+        while (level.getBlockState(root.below()).getBlock() instanceof CactusBlock && depth < 8) {
+            root = root.below();
+            depth++;
+        }
+
+        int currentDay = CropGrowthTracker.getSolarDays(level);
+        int daysPerStage = CropGrowthConfig.getDaysPerStage(
+                BuiltInRegistries.BLOCK.getKey(Blocks.CACTUS));
+        Set<Season> suitableSeasons = CropCalendar.resolveSuitableSeasons(CropGrowthTracker.getSeason(level), Blocks.CACTUS);
+        int seasonLength = CropGrowthTracker.getSeasonLength(level);
+        int newHeight = headPos.getY() - root.getY() + 1;
+
+        int plantedDay = PlantedDayMath.heightCropPlantedDayAfterBonemeal(currentDay, newHeight,
+                CropKindResolver.CACTUS_MAX_HEIGHT, daysPerStage, suitableSeasons, seasonLength);
+
+        LevelChunk chunk = level.getChunkAt(root);
+        ChunkCropData chunkData = (ChunkCropData) chunk;
+        Map<BlockPos, CropProgressEntry> cropData = chunkData.pastoralcraft$getCropData();
+        CropProgressEntry entry = cropData.get(root);
+        if (entry != null && plantedDay >= entry.plantedDay) return;
+        cropData.put(root, new CropProgressEntry(plantedDay));
+        CropGrowthTracker.registerTrackedChunk(chunk);
+        if (entry != null) {
+            CropGrowthTracker.logDebug("Cactus bonemeal: root={} newHeight={} plantedDay={} (was {})",
+                    root, newHeight, plantedDay, entry.plantedDay);
+        } else {
+            CropGrowthTracker.logDebug("Cactus bonemeal (new track): root={} newHeight={} plantedDay={}",
                     root, newHeight, plantedDay);
         }
     }

@@ -41,6 +41,8 @@ class StructureDescriptorTest {
         assertNull(d.climbSupport());
         assertEquals(0, d.maxClimbHeight());
         assertNull(d.segmentProperty());
+        assertFalse(d.freeze());
+        assertFalse(d.water());
         assertEquals(CropStructureRegistry.EMPTY, d);
     }
 
@@ -75,11 +77,18 @@ class StructureDescriptorTest {
     }
 
     @Test
+    void codec_decodesFreezeAndWater() {
+        StructureDescriptor d = decode("{\"freeze\": true, \"water\": true}");
+        assertTrue(d.freeze());
+        assertTrue(d.water());
+    }
+
+    @Test
     void codec_roundTrips() {
         StructureDescriptor original = new StructureDescriptor(4,
                 ResourceLocation.parse("a:b"), ResourceLocation.parse("c:d"),
                 ResourceLocation.parse("e:f"), ResourceLocation.parse("g:h"),
-                2, "location");
+                2, "location", true, false);
         StructureDescriptor decoded = decode(encode(original).toString());
         assertEquals(original, decoded);
     }

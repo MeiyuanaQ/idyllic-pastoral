@@ -8,9 +8,11 @@
         "LevelChunkMixin",
         "LevelMixin",
         "SugarCaneBlockMixin",
+        "CactusBlockMixin",
         "KelpBlockMixin",
         "TomatoBlockMixin",
-        "FlaxBlockMixin"
+        "FlaxBlockMixin",
+        "PitcherCropBlockMixin"
     ],
     "client": [],
     "server": []

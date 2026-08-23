@@ -2,6 +2,7 @@ package com.crispyraccoon.pastoralcraft;
 
 import org.slf4j.Logger;
 
+import com.crispyraccoon.pastoralcraft.compat.EsGrowthDisabler;
 import com.crispyraccoon.pastoralcraft.crop.CropGrowthConfig;
 import com.mojang.logging.LogUtils;
 
@@ -31,6 +32,12 @@ public class PastoralCraft {
     public PastoralCraft(IEventBus modEventBus, ModContainer modContainer) {
         // Register our crop growth config spec so FML creates and manages the config file
         modContainer.registerConfig(ModConfig.Type.COMMON, CropGrowthConfig.SPEC);
+
+        // Auto-disable Ecliptic Seasons' crop humidity / greenhouse / seasonal
+        // restriction: PastoralCraft fully owns crop growth, so ES's own handlers
+        // would only conflict. Set at common-setup, after every mod's config file
+        // is loaded (ES's own ModConfigEvent never reaches this mod bus).
+        modEventBus.addListener(EsGrowthDisabler::onCommonSetup);
 
         LOGGER.info("PastoralCraft initialized - deterministic crop growth system active");
     }

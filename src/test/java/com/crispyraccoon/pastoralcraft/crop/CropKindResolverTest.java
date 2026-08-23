@@ -209,4 +209,18 @@ class CropKindResolverTest {
         assertEquals(CropKind.HEIGHT, CropKindResolver.kindOf(Blocks.KELP));
         assertEquals(CropKind.HEIGHT, CropKindResolver.kindOf(Blocks.KELP_PLANT));
     }
+
+    @Test
+    void heightOf_cactus_resolvesHeightCrop() {
+        // Cactus is a vanilla Block (not CropBlock/StemBlock/BushBlock) that grows
+        // upward like sugar cane (max height 3, root-tracked). It must classify as
+        // HEIGHT so the calendar drives height-based growth instead of its vanilla
+        // randomTick AGE_15 progress.
+        HeightCrop height = CropKindResolver.heightOf(Blocks.CACTUS);
+        assertNotNull(height);
+        assertEquals(CropKindResolver.CACTUS_MAX_HEIGHT, height.maxHeight());
+        assertEquals(Blocks.CACTUS, height.plantBlock());
+        assertEquals(false, height.growsInWater());
+        assertEquals(CropKind.HEIGHT, CropKindResolver.kindOf(Blocks.CACTUS));
+    }
 }

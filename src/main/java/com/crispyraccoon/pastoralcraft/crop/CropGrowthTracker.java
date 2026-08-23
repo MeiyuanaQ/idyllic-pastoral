@@ -18,6 +18,7 @@ import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CactusBlock;
 import net.minecraft.world.level.block.BonemealableBlock;
 import net.minecraft.world.level.block.CocoaBlock;
 import net.minecraft.world.level.block.CropBlock;
@@ -258,6 +259,15 @@ public class CropGrowthTracker {
                 seasonLength, suitableSeasons, nonArable);
     }
 
+    public static CropSimulation.GrowthSimulation simulateGrowth(BlockPos pos, int plantedDay, int currentDay,
+                                                   int daysPerStage, int maxAge,
+                                                   int seasonLength, Set<Season> suitableSeasons,
+                                                   boolean nonArable,
+                                                   double mutateChance, double growChance) {
+        return CropSimulation.simulateGrowth(pos, plantedDay, currentDay, daysPerStage, maxAge,
+                seasonLength, suitableSeasons, nonArable, mutateChance, growChance);
+    }
+
     public static CropSimulation.GrowthSimulation simulateGrowth(long posKey, int plantedDay, int currentDay,
                                                    int daysPerStage, int maxAge,
                                                    int seasonLength, Set<Season> suitableSeasons,
@@ -287,6 +297,14 @@ public class CropGrowthTracker {
                                               double mutateChance, double fruitChance) {
         return CropSimulation.simulateStem(posKey, plantedDay, currentDay, daysPerStage, daysPerFruit, maxAge,
                 seasonLength, suitableSeasons, mutateChance, fruitChance);
+    }
+
+    public static CropSimulation.StemSimulation simulateStem(long posKey, int plantedDay, int currentDay,
+                                              int daysPerStage, int daysPerFruit, int maxAge,
+                                              int seasonLength, Set<Season> suitableSeasons,
+                                              double mutateChance, double fruitChance, double growChance) {
+        return CropSimulation.simulateStem(posKey, plantedDay, currentDay, daysPerStage, daysPerFruit, maxAge,
+                seasonLength, suitableSeasons, mutateChance, fruitChance, growChance);
     }
 
     public static Season seasonOfDay(int solarDay, int termLength) {
@@ -330,6 +348,12 @@ public class CropGrowthTracker {
     static int backCalculatePlantedDaySuitable(int currentDay, int newAge, int daysPerStage,
                                                Set<Season> suitableSeasons, int seasonLength) {
         return PlantedDayMath.backCalculatePlantedDaySuitable(currentDay, newAge, daysPerStage,
+                suitableSeasons, seasonLength);
+    }
+
+    static int backCalculatePlantedDayForArableBonemeal(int currentDay, int newAge, int daysPerStage,
+                                                        Set<Season> suitableSeasons, int seasonLength) {
+        return PlantedDayMath.backCalculatePlantedDayForArableBonemeal(currentDay, newAge, daysPerStage,
                 suitableSeasons, seasonLength);
     }
 
@@ -425,6 +449,18 @@ public class CropGrowthTracker {
 
     public static void onSugarCaneBonemeal(Level level, BlockPos headPos) {
         HeightStrategy.onSugarCaneBonemeal(level, headPos);
+    }
+
+    // =======================================================================
+    // Cactus Growth — deterministic height-based growth
+    // =======================================================================
+
+    public static void onCactusHarvest(Level level, BlockPos harvestedPos) {
+        HeightStrategy.onCactusHarvest(level, harvestedPos);
+    }
+
+    public static void onCactusBonemeal(Level level, BlockPos headPos) {
+        HeightStrategy.onCactusBonemeal(level, headPos);
     }
 
     // =======================================================================
@@ -598,14 +634,15 @@ public class CropGrowthTracker {
      * Account for a non-stem crop being accelerated by bonemeal (or any direct
      * age increase that leaves the block tracked).
      *
-     * <p>Round4 §8b kept {@code plantedDay} fixed on bonemeal so unsuitable days
-     * were never back-calculated (avoiding spurious mutation), but that made the
-     * calendar stage lag behind the accelerated world age — the crop then stalls
-     * one {@code daysPerStage} per accelerated stage before catch-up advances it
-     * again. This method back-shifts {@code plantedDay} conservatively via
-     * {@link #backCalculatePlantedDaySuitable}: the shift never crosses into an
-     * unsuitable season, so {@link #simulateGrowth} sees only suitable end-days,
-     * never rolls for mutation, and aligns the calendar stage with the world age.</p>
+     * <p>Keeping {@code plantedDay} fixed on bonemeal made the calendar stage lag
+     * behind the accelerated world age — the crop then stalled one
+     * {@code daysPerStage} per accelerated stage before catch-up advanced it
+     * again. Arable non-stem crops now use the B rule via
+     * {@link #backCalculatePlantedDayForArableBonemeal}: full back-shift when the
+     * current day is suitable (even across a season boundary, accepting the
+     * crossed-window mutation roll), no shift when the current day is unsuitable.
+     * Freeze/non-arable crops keep {@link #backCalculatePlantedDaySuitable} so their
+     * suitable-days-only simulation still reaches the accelerated age.</p>
      *
      * <p>Only a backward (earlier) shift is ever applied; a result that would move
      * {@code plantedDay} forward is discarded, so the calendar stage can never
@@ -631,11 +668,17 @@ public class CropGrowthTracker {
         int currentDay = getSolarDays(level);
         Set<Season> suitableSeasons = resolveSuitableSeasons(getSeason(level), block);
         int seasonLength = getSeasonLength(level);
-        int plantedDay = backCalculatePlantedDaySuitable(currentDay, newAge, daysPerStage,
-                suitableSeasons, seasonLength);
-        // Conservative: only allow shifting backward (earlier), never forward —
-        // moving plantedDay forward would drop the calendar stage and reintroduce
-        // the stall/regression this fix removes.
+        // B rule: arable crops shift the full accelerated span when the current
+        // day is suitable (accepting the crossed-season mutation roll); freeze
+        // crops keep the conservative suitable-span backshift so their
+        // suitable-days-only simulation still reaches the accelerated age.
+        boolean nonArable = CropClassifier.isNonArableAt(level, pos, block);
+        int plantedDay = nonArable
+                ? backCalculatePlantedDaySuitable(currentDay, newAge, daysPerStage, suitableSeasons, seasonLength)
+                : backCalculatePlantedDayForArableBonemeal(currentDay, newAge, daysPerStage, suitableSeasons, seasonLength);
+        // Only allow shifting backward (earlier), never forward — moving
+        // plantedDay forward would drop the calendar stage and reintroduce the
+        // stall/regression this fix removes.
         if (plantedDay >= entry.plantedDay) return;
         cropData.put(pos, new CropProgressEntry(plantedDay));
         logDebug("Crop bonemeal: {} at {} shifted plantedDay back {} days ({} -> {})",
@@ -800,7 +843,9 @@ public class CropGrowthTracker {
                 // Sugar cane is non-arable: it freezes in unsuitable seasons and
                 // never mutates, so only suitable-season days count toward growth.
                 CropSimulation.GrowthSimulation sim = simulateGrowth(pos, progress.plantedDay, currentDay,
-                        daysPerStage, sugarMaxAge, seasonLength, suitableSeasons, true);
+                        daysPerStage, sugarMaxAge, seasonLength, suitableSeasons, true,
+                        CropGrowthConfig.getUnsuitableMutateChance(cropId),
+                        CropGrowthConfig.getUnsuitableGrowChance(cropId));
 
                 int targetHeight = Math.min(sim.stage() + 1, maxHeight);
 
@@ -810,6 +855,54 @@ public class CropGrowthTracker {
                         currentHeight++;
                         grown++;
                         logDebug("Catch-up (load): sugar cane at {} grew to height {} (target={})",
+                                pos, currentHeight, targetHeight);
+                    } else {
+                        break; // Can't grow further (blocked above)
+                    }
+                }
+
+                continue;
+            }
+
+            // --- Cactus: height-based growth ---
+            if (block instanceof CactusBlock) {
+                // Defensive: only the bottom (root) block may be tracked. A
+                // non-bottom entry (legacy/corrupt data) would grow upward from
+                // the wrong position and exceed the 3-block height limit.
+                if (level.getBlockState(pos.below()).getBlock() instanceof CactusBlock) {
+                    cropData.remove(pos);
+                    removed++;
+                    continue;
+                }
+
+                int currentHeight = HeightStrategy.getCactusHeight(level, pos);
+                int cactusMaxAge = CropKindResolver.CACTUS_MAX_HEIGHT - 1; // 0-indexed: 2
+
+                // Keep the entry when fully grown: cactus is re-harvestable and
+                // onCactusHarvest resets plantedDay on harvest.
+                if (currentHeight >= CropKindResolver.CACTUS_MAX_HEIGHT) {
+                    continue;
+                }
+
+                ResourceLocation cropId = BuiltInRegistries.BLOCK.getKey(block);
+                int daysPerStage = CropGrowthConfig.getDaysPerStage(cropId);
+                Set<Season> suitableSeasons = resolveSuitableSeasons(currentSeason, block);
+
+                // Cactus is non-arable: it freezes in unsuitable seasons and
+                // never mutates, so only suitable-season days count toward growth.
+                CropSimulation.GrowthSimulation sim = simulateGrowth(pos, progress.plantedDay, currentDay,
+                        daysPerStage, cactusMaxAge, seasonLength, suitableSeasons, true,
+                        CropGrowthConfig.getUnsuitableMutateChance(cropId),
+                        CropGrowthConfig.getUnsuitableGrowChance(cropId));
+
+                int targetHeight = Math.min(sim.stage() + 1, CropKindResolver.CACTUS_MAX_HEIGHT);
+
+                // Grow one block at a time up to target height
+                while (currentHeight < targetHeight) {
+                    if (HeightStrategy.growCactus(level, pos, currentHeight)) {
+                        currentHeight++;
+                        grown++;
+                        logDebug("Catch-up (load): cactus at {} grew to height {} (target={})",
                                 pos, currentHeight, targetHeight);
                     } else {
                         break; // Can't grow further (blocked above)
@@ -848,7 +941,9 @@ public class CropGrowthTracker {
                 // Kelp is non-arable: it freezes in unsuitable seasons and never
                 // mutates, so only suitable-season days count toward growth.
                 CropSimulation.GrowthSimulation sim = simulateGrowth(pos, progress.plantedDay, currentDay,
-                        daysPerStage, kelpMaxAge, seasonLength, suitableSeasons, true);
+                        daysPerStage, kelpMaxAge, seasonLength, suitableSeasons, true,
+                        CropGrowthConfig.getUnsuitableMutateChance(cropId),
+                        CropGrowthConfig.getUnsuitableGrowChance(cropId));
 
                 int targetHeight = Math.min(sim.stage() + 1, CropClassifier.KELP_MAX_HEIGHT);
 

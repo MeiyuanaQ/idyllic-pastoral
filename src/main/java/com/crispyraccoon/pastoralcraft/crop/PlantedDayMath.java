@@ -76,6 +76,41 @@ public final class PlantedDayMath {
     }
 
     /**
+     * Back-calculate the plantedDay for a bonemeal-accelerated <b>arable</b>
+     * non-stem crop using the agreed B rule: when the current day is suitable,
+     * shift the full {@code newAge * daysPerStage} even if that crosses into an
+     * unsuitable season; when the current day is unsuitable, do not shift.
+     *
+     * <p>This deliberately reintroduces unsuitable-season mutation rolls for the
+     * crossed window (the trade-off accepted for B), but only for arable crops.
+     * Freeze/non-arable crops keep using
+     * {@link #backCalculatePlantedDaySuitable} because their simulation counts
+     * only suitable days, so a full calendar shift across a season boundary
+     * would still leave their target stage behind the accelerated world age.</p>
+     *
+     * @param currentDay      the current solar day
+     * @param newAge          the crop's age after acceleration
+     * @param daysPerStage    solar days per growth stage
+     * @param suitableSeasons the crop's suitable seasons
+     * @param seasonLength    solar days in one full season (divided by
+     *                        {@code SOLAR_TERMS_PER_SEASON} to get the term length)
+     * @return the back-calculated plantedDay (never later than {@code currentDay}
+     *         for a positive {@code daysPerStage})
+     */
+    public static int backCalculatePlantedDayForArableBonemeal(int currentDay, int newAge, int daysPerStage,
+                                                               Set<Season> suitableSeasons, int seasonLength) {
+        if (newAge <= 0 || daysPerStage <= 0) return currentDay;
+        if (suitableSeasons.contains(Season.NONE) || suitableSeasons.size() >= 4) {
+            return currentDay - newAge * daysPerStage;
+        }
+        int termLength = Math.max(1, seasonLength / CropGrowthConfig.SOLAR_TERMS_PER_SEASON);
+        if (!CropCalendar.isSeasonSuitable(CropCalendar.seasonOfDay(currentDay, termLength), suitableSeasons)) {
+            return currentDay;
+        }
+        return currentDay - newAge * daysPerStage;
+    }
+
+    /**
      * Back-calculate the root plantedDay for a bonemeal-accelerated HEIGHT crop
      * (kelp / sugar cane) so the calendar target height stays aligned with the
      * accelerated world height, without crossing into unsuitable seasons.

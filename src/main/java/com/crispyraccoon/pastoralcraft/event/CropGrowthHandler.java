@@ -30,6 +30,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.CactusBlock;
 import net.minecraft.world.level.block.KelpBlock;
 import net.minecraft.world.level.block.KelpPlantBlock;
 import net.minecraft.world.level.block.StemBlock;
@@ -122,6 +123,7 @@ public class CropGrowthHandler {
         // Kelp in particular must never reach the arable mutate-to-short-grass
         // branch below — it is a water crop and freezes in unsuitable seasons.
         if (block instanceof SugarCaneBlock) return;
+        if (block instanceof CactusBlock) return;
         if (block instanceof KelpBlock || block instanceof KelpPlantBlock) return;
 
         // REGROW crops (boolean product, e.g. sunflower has_seeds) have no AGE
@@ -194,7 +196,9 @@ public class CropGrowthHandler {
         boolean nonArable = CropGrowthTracker.isNonArableAt(level, pos, block);
 
         var sim = CropGrowthTracker.simulateGrowth(pos, entry.plantedDay, currentDay,
-                daysPerStage, maxAge, seasonLength, suitableSeasons, nonArable);
+                daysPerStage, maxAge, seasonLength, suitableSeasons, nonArable,
+                CropGrowthConfig.getUnsuitableMutateChance(cropId),
+                CropGrowthConfig.getUnsuitableGrowChance(cropId));
 
         // Mutated into short grass during an unsuitable-season growth attempt.
         if (sim.mutated()) {

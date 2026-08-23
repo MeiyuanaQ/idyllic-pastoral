@@ -31,7 +31,7 @@ public final class CropStructureRegistry {
 
     /** Shared sentinel for "no structural declaration" (all fields defaulted). */
     public static final StructureDescriptor EMPTY =
-            new StructureDescriptor(-1, null, null, null, null, 0, null);
+            new StructureDescriptor(-1, null, null, null, null, 0, null, false, false);
 
     private static final Map<Block, StructureDescriptor> CACHE = new ConcurrentHashMap<>();
 
@@ -68,6 +68,8 @@ public final class CropStructureRegistry {
         ResourceLocation climbSupport = null;
         int maxClimbHeight = 0;
         String segmentProperty = null;
+        boolean freeze = false;
+        boolean water = false;
 
         // 1. Config override (user-facing) wins on a per-field basis.
         if (override != null) {
@@ -77,6 +79,8 @@ public final class CropStructureRegistry {
             if (override.climbBlock != null) climbBlock = override.climbBlock;
             if (override.climbSupport != null) climbSupport = override.climbSupport;
             if (override.maxClimbHeight > 0) maxClimbHeight = override.maxClimbHeight;
+            if (override.freeze) freeze = true;
+            if (override.waterCompanion) water = true;
         }
         // 2. Data map fills the remaining gaps (built-in + data pack declarations).
         if (dataMap != null) {
@@ -87,13 +91,15 @@ public final class CropStructureRegistry {
             if (climbSupport == null) climbSupport = dataMap.climbSupport();
             if (maxClimbHeight <= 0) maxClimbHeight = dataMap.maxClimbHeight();
             if (segmentProperty == null) segmentProperty = dataMap.segmentProperty();
+            if (!freeze) freeze = dataMap.freeze();
+            if (!water) water = dataMap.water();
         }
 
         if (doubleAge < 0 && topBlock == null && transformBlock == null && climbBlock == null
-                && maxClimbHeight <= 0 && segmentProperty == null) {
+                && maxClimbHeight <= 0 && segmentProperty == null && !freeze && !water) {
             return EMPTY;
         }
         return new StructureDescriptor(doubleAge, topBlock, transformBlock,
-                climbBlock, climbSupport, maxClimbHeight, segmentProperty);
+                climbBlock, climbSupport, maxClimbHeight, segmentProperty, freeze, water);
     }
 }

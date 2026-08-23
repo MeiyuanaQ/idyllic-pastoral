@@ -27,7 +27,7 @@ class MaturitySideEffectTest {
     private static StructureDescriptor descriptor(ResourceLocation topBlock,
                                                   ResourceLocation transformBlock,
                                                   int doubleAge) {
-        return new StructureDescriptor(doubleAge, topBlock, transformBlock, null, null, 0, null);
+        return new StructureDescriptor(doubleAge, topBlock, transformBlock, null, null, 0, null, false, false);
     }
 
     @Test

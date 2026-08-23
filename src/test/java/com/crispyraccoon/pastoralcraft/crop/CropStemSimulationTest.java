@@ -42,6 +42,14 @@ class CropStemSimulationTest {
             long posKey, int plantedDay, int currentDay, int daysPerStage, int daysPerFruit,
             int maxAge, int seasonLength, Set<Season> suitableSeasons,
             double mutateChance, double fruitChance) {
+        return oracle(posKey, plantedDay, currentDay, daysPerStage, daysPerFruit,
+                maxAge, seasonLength, suitableSeasons, mutateChance, fruitChance, 0.0);
+    }
+
+    private static CropSimulation.StemSimulation oracle(
+            long posKey, int plantedDay, int currentDay, int daysPerStage, int daysPerFruit,
+            int maxAge, int seasonLength, Set<Season> suitableSeasons,
+            double mutateChance, double fruitChance, double growChance) {
         if (currentDay <= plantedDay) return new CropSimulation.StemSimulation(0, false, false);
         if (daysPerStage <= 0 || daysPerFruit <= 0 || maxAge <= 0) {
             return new CropSimulation.StemSimulation(0, false, false);
@@ -49,8 +57,12 @@ class CropStemSimulationTest {
 
         double mut = Math.max(0.0, Math.min(1.0, mutateChance));
         double fruit = Math.max(0.0, Math.min(1.0, fruitChance));
+        double grow = Math.max(0.0, Math.min(1.0, growChance));
         if (mut + fruit > 1.0) {
             fruit = Math.max(0.0, 1.0 - mut);
+        }
+        if (mut + grow > 1.0) {
+            grow = Math.max(0.0, 1.0 - mut);
         }
 
         if (suitableSeasons.contains(Season.NONE) || suitableSeasons.size() >= 4) {
@@ -94,8 +106,13 @@ class CropStemSimulationTest {
                     if (roll < mut) {
                         return new CropSimulation.StemSimulation(stage, true, fruited);
                     }
-                    if (stage >= maxAge && !fruited && roll < mut + fruit) {
-                        fruited = true;
+                    if (stage >= maxAge) {
+                        if (!fruited && roll < mut + fruit) {
+                            fruited = true;
+                        }
+                    } else if (roll < mut + grow) {
+                        stage++;
+                        growAccum = 0;
                     }
                 }
             }
@@ -198,5 +215,61 @@ class CropStemSimulationTest {
         // window rather than mutating.
         assertEquals(new CropSimulation.StemSimulation(7, false, true),
                 CropGrowthTracker.simulateStem(1L, 20, 44, 3, 3, 7, 42, SPRING_ONLY, 0.0, 1.0));
+    }
+
+    @Test
+    void segmentedMatchesDailyOracleWithGrow() {
+        Random rng = new Random(20260901L);
+        int[] termLengths = {3, 7, 14};
+        double[] chances = {0.0, 0.1, 0.2, 0.5, 1.0};
+
+        for (int i = 0; i < 600; i++) {
+            int termLength = termLengths[rng.nextInt(termLengths.length)];
+            int seasonLength = termLength * SOLAR_TERMS_PER_SEASON;
+            Set<Season> suitable = NON_YEAR_ROUND_SETS.get(rng.nextInt(NON_YEAR_ROUND_SETS.size()));
+            int plantedDay = rng.nextInt(60);
+            int currentDay = plantedDay + 1 + rng.nextInt(2000);
+            int daysPerStage = 1 + rng.nextInt(5);
+            int daysPerFruit = 1 + rng.nextInt(5);
+            int maxAge = 3 + rng.nextInt(5);
+            double mut = chances[rng.nextInt(chances.length)];
+            double fruit = chances[rng.nextInt(chances.length)];
+            double grow = chances[rng.nextInt(chances.length)];
+            long posKey = rng.nextLong();
+
+            CropSimulation.StemSimulation expected = oracle(
+                    posKey, plantedDay, currentDay, daysPerStage, daysPerFruit,
+                    maxAge, seasonLength, suitable, mut, fruit, grow);
+            CropSimulation.StemSimulation actual = CropGrowthTracker.simulateStem(
+                    posKey, plantedDay, currentDay, daysPerStage, daysPerFruit,
+                    maxAge, seasonLength, suitable, mut, fruit, grow);
+
+            assertEquals(expected, actual,
+                    "mismatch at i=" + i
+                            + " termLength=" + termLength
+                            + " plantedDay=" + plantedDay
+                            + " currentDay=" + currentDay
+                            + " daysPerStage=" + daysPerStage
+                            + " daysPerFruit=" + daysPerFruit
+                            + " maxAge=" + maxAge
+                            + " mut=" + mut + " fruit=" + fruit + " grow=" + grow
+                            + " suitable=" + suitable);
+        }
+    }
+
+    @Test
+    void immatureUnsuitableGrow_growsWhenEnabled() {
+        // Planted day 39: days 40-41 spring (suitable, +2 partial), days 42-44
+        // summer (unsuitable). With mut=0, fruit=0, grow=1.0 the immature stem
+        // grows one stage on its first full 3-day unsuitable window.
+        assertEquals(new CropSimulation.StemSimulation(1, false, false),
+                CropGrowthTracker.simulateStem(1L, 39, 44, 3, 3, 7, 42, SPRING_ONLY, 0.0, 0.0, 1.0));
+    }
+
+    @Test
+    void immatureUnsuitableGrow_defaultOff_doesNotGrow() {
+        // grow defaults to 0.0: the immature stem does not grow off-season.
+        assertEquals(new CropSimulation.StemSimulation(0, false, false),
+                CropGrowthTracker.simulateStem(1L, 39, 44, 3, 3, 7, 42, SPRING_ONLY, 0.0, 0.0));
     }
 }

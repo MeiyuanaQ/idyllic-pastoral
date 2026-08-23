@@ -1,0 +1,79 @@
+#Default number of solar days required for each crop growth stage.
+#Lower values = faster growth. Set to 0 to disable the growth delay.
+# Default: 3
+# Range: 0 ~ 365
+defaultDaysPerStage = 3
+#Number of solar days required between StemBlock fruiting cycles.
+#After a stem reaches MAX_AGE, it will attempt to spawn fruit every
+#this many days while in a suitable season.
+# Default: 3
+# Range: 1 ~ 365
+daysPerFruit = 3
+#Chance (0.0 - 1.0) that a crop in an unsuitable season will mutate
+#into short grass on each growth attempt.
+#Deterministic per position + plantedDay + attempt index, so results
+#are consistent between real-time and chunk-load catch-up.
+#Constraint: mutateChance + unsuitableGrowChance must be <= 1.0.
+# Default: 0.2
+# Range: 0.0 ~ 1.0
+unsuitableMutateChance = 0.2
+#Chance (0.0 - 1.0) that a crop in an unsuitable season will grow
+#one stage on each growth attempt.
+#The remaining probability (1 - mutateChance - growChance) results in no growth.
+#Constraint: unsuitableMutateChance + this must be <= 1.0; the sum is
+#clamped at runtime so the 'no growth' branch stays reachable.
+# Default: 0.4
+# Range: 0.0 ~ 1.0
+unsuitableGrowChance = 0.4
+#Chance (0.0 - 1.0) that a mature stem (MAX_AGE) in an unsuitable season
+#mutates into short grass on each fruiting cycle.
+# Default: 0.2
+# Range: 0.0 ~ 1.0
+stemUnsuitableMutateChance = 0.2
+#Chance (0.0 - 1.0) that a mature stem (MAX_AGE) in an unsuitable season
+#produces a fruit on each fruiting cycle.
+#The remaining probability (1 - mutateChance - fruitChance) results in no change.
+# Default: 0.2
+# Range: 0.0 ~ 1.0
+stemUnsuitableFruitChance = 0.2
+#Number of solar days per Solar Term (节气).
+#Ecliptic Seasons: 1 Year = 4 Seasons, 1 Season = 6 Solar Terms.
+#Must match the Ecliptic Seasons 'LastingDaysOfEachTerm' setting (default 7 days).
+# Default: 7
+# Range: 1 ~ 365
+catchUpSeasonLength = 7
+#Enable debug logging for crop growth decisions.
+#Logs when crops grow, mutate, or are blocked by season.
+debugLogging = true
+#Default seasons for crops with no Ecliptic Seasons season info.
+#Applies to blocks that are neither in the ES runtime registry nor in any
+#crop season block tag (e.g. most mod-added crops).
+#Format: comma-separated list of spring/summer/autumn/winter, or 'year_round'.
+#Example: "spring,autumn" (SP_AU), "year_round"
+#Default: spring,autumn
+defaultUntaggedSeasons = "spring,autumn"
+#Per-crop growth overrides.
+#Format: "modid:crop_id=key=value,key2=value2,..."
+#Supported keys: daysPerStage, seasons, topBlock, transformBlock, water, doubleAge,
+#              freeze, climbBlock, climbSupport, maxClimbHeight.
+#  daysPerStage=N         - solar days per growth stage
+#  seasons=SP_SU_AU       - override suitable seasons ('_'/space separated,
+#                          or 'year_round'; omitting uses the resolution chain)
+#  topBlock=modid:block  - place this block above when mature (companion)
+#  transformBlock=modid:block - replace the block when mature (transform)
+#  water=true|false      - require water above before placing topBlock
+#  doubleAge=N           - two-block crop: grow upper half once age >= N (-1 = not)
+#  freeze=true|false     - non-arable: freeze entirely in unsuitable seasons
+#                          (no mutation/growth attempts; default: false)
+#  climbBlock=modid:block - vine family counted for climbing height (e.g. farmersdelight:tomatoes_on_rope)
+#  climbSupport=modid:block - the support the vine climbs (e.g. farmersdelight:rope)
+#  maxClimbHeight=N      - max vine stack segments the vine can climb (default: 0 = none)
+#Example: "farmersdelight:rice=daysPerStage=3,topBlock=farmersdelight:rice_panicles,water=true"
+#Old format "modid:crop_id=daysPerStage=N" remains fully compatible.
+#Crops not listed here use defaultDaysPerStage.
+cropOverrides = []
+#Comma-separated horizontal directions that melon/pumpkin stems may fruit toward.
+#Valid values: north, south, east, west (e.g. "east,north").
+#The order defines the deterministic direction check order.
+#Default: east,north (fruit only toward east or north).
+stemFruitDirections = "east,north"

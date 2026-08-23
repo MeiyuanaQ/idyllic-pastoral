@@ -11,6 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CactusBlock;
 import net.minecraft.world.level.block.SugarCaneBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -43,6 +44,18 @@ public final class EntryStore {
         if (block instanceof SugarCaneBlock) {
             int depth = 0;
             while (level.getBlockState(pos.below()).getBlock() instanceof SugarCaneBlock && depth < 8) {
+                pos = pos.below();
+                depth++;
+            }
+            state = level.getBlockState(pos);
+            block = state.getBlock();
+        }
+
+        // Cactus: walk down to the bottom block and track only the root.
+        // Same bottom-only rule as sugar cane.
+        if (block instanceof CactusBlock) {
+            int depth = 0;
+            while (level.getBlockState(pos.below()).getBlock() instanceof CactusBlock && depth < 8) {
                 pos = pos.below();
                 depth++;
             }
@@ -124,6 +137,16 @@ public final class EntryStore {
                 Set<Season> suitableSeasons = CropCalendar.resolveSuitableSeasons(CropGrowthTracker.getSeason(level), Blocks.SUGAR_CANE);
                 solarDay = PlantedDayMath.heightCropPlantedDayAfterBonemeal(currentDay, height, 3,
                         daysPerStage, suitableSeasons, CropGrowthTracker.getSeasonLength(level));
+            }
+        } else if (block instanceof CactusBlock) {
+            int height = HeightStrategy.getCactusHeight(level, pos);
+            if (height > 1) {
+                int daysPerStage = CropGrowthConfig.getDaysPerStage(
+                        BuiltInRegistries.BLOCK.getKey(Blocks.CACTUS));
+                Set<Season> suitableSeasons = CropCalendar.resolveSuitableSeasons(CropGrowthTracker.getSeason(level), Blocks.CACTUS);
+                solarDay = PlantedDayMath.heightCropPlantedDayAfterBonemeal(currentDay, height,
+                        CropKindResolver.CACTUS_MAX_HEIGHT, daysPerStage, suitableSeasons,
+                        CropGrowthTracker.getSeasonLength(level));
             }
         }
         CropProgressEntry entry = new CropProgressEntry(solarDay);

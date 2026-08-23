@@ -5,23 +5,30 @@
       "doubleAge": 3
     },
     "supplementaries:flax": {
-      "doubleAge": 4
+      "doubleAge": 4,
+      "freeze": true
     },
     "farmersdelight:rice": {
       "topBlock": "farmersdelight:rice_panicles"
     },
+    "farmersdelight:rice_panicles": {
+      "freeze": true
+    },
     "farmersdelight:budding_tomatoes": {
-      "transformBlock": "farmersdelight:tomatoes"
+      "transformBlock": "farmersdelight:tomatoes",
+      "freeze": true
     },
     "farmersdelight:tomatoes": {
       "climbBlock": "farmersdelight:tomatoes_on_rope",
       "climbSupport": "farmersdelight:rope",
-      "maxClimbHeight": 2
+      "maxClimbHeight": 2,
+      "freeze": true
     },
     "farmersdelight:tomatoes_on_rope": {
       "climbBlock": "farmersdelight:tomatoes_on_rope",
       "climbSupport": "farmersdelight:rope",
-      "maxClimbHeight": 2
+      "maxClimbHeight": 2,
+      "freeze": true
     },
     "kaleidoscope_cookery:rice_crop": {
       "segmentProperty": "location"

@@ -230,7 +230,7 @@ class CropSideEffectTest {
         // is followed); the doubleAge descriptor marks it as a two-block crop.
         BlockState upper = Blocks.PITCHER_CROP.defaultBlockState()
                 .setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER);
-        StructureDescriptor doubleDescriptor = new StructureDescriptor(4, null, null, null, null, 0, null);
+        StructureDescriptor doubleDescriptor = new StructureDescriptor(4, null, null, null, null, 0, null, false, false);
         assertTrue(CropGrowthTracker.isDoubleCropUpperHalf(upper, doubleDescriptor));
     }
 
@@ -239,7 +239,7 @@ class CropSideEffectTest {
         // The LOWER half of a DOUBLE crop is the tracked half, never skipped.
         BlockState lower = Blocks.PITCHER_CROP.defaultBlockState()
                 .setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.LOWER);
-        StructureDescriptor doubleDescriptor = new StructureDescriptor(4, null, null, null, null, 0, null);
+        StructureDescriptor doubleDescriptor = new StructureDescriptor(4, null, null, null, null, 0, null, false, false);
         assertFalse(CropGrowthTracker.isDoubleCropUpperHalf(lower, doubleDescriptor));
     }
 
@@ -256,7 +256,7 @@ class CropSideEffectTest {
         // doubleAge < 0 marks a non-DOUBLE crop, so its UPPER half is not skipped.
         BlockState upper = Blocks.PITCHER_CROP.defaultBlockState()
                 .setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER);
-        StructureDescriptor nonDoubleDescriptor = new StructureDescriptor(-1, null, null, null, null, 0, null);
+        StructureDescriptor nonDoubleDescriptor = new StructureDescriptor(-1, null, null, null, null, 0, null, false, false);
         assertFalse(CropGrowthTracker.isDoubleCropUpperHalf(upper, nonDoubleDescriptor));
     }
 

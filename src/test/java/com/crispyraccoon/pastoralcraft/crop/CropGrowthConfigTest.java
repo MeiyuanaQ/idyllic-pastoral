@@ -125,7 +125,45 @@ class CropGrowthConfigTest {
 
     @Test
     void unknownCrop_hasNoOverride() {
-        // The override cache starts empty and no built-in covers vanilla wheat.
-        assertNull(CropGrowthConfig.getOverride(ResourceLocation.parse("minecraft:wheat")));
+        // The override cache starts empty before refreshOverrides(); a crop with
+        // no dedicated section and no custom-override entry resolves to null.
+        assertNull(CropGrowthConfig.getOverride(ResourceLocation.parse("some_mod:some_crop")));
+    }
+
+    @Test
+    void customOverride_stemKeysParse() {
+        // The fallback custom-override string also supports the stem-specific keys.
+        CropGrowthConfig.CropOverride override = parseOverrideOf(
+                "minecraft:melon_stem=daysPerFruit=5,fruitDirections=south,stemMutateChance=0.5,"
+                        + "stemFruitChance=0.25,stemGrowChance=0.1");
+        assertEquals(5, override.daysPerFruit);
+        assertEquals("south", override.fruitDirections);
+        assertEquals(0.5, override.stemUnsuitableMutateChance);
+        assertEquals(0.25, override.stemUnsuitableFruitChance);
+        assertEquals(0.1, override.stemUnsuitableGrowChance);
+    }
+
+    @Test
+    void customOverride_arableChanceKeysParse() {
+        // The fallback custom-override string supports per-crop arable roll chances.
+        CropGrowthConfig.CropOverride override = parseOverrideOf(
+                "minecraft:wheat=unsuitableMutateChance=0.3,unsuitableGrowChance=0.5");
+        assertEquals(0.3, override.unsuitableMutateChance);
+        assertEquals(0.5, override.unsuitableGrowChance);
+    }
+
+    @Test
+    void convenienceConstructor_chanceFieldsDefaultUnset() {
+        // The 10-arg convenience constructor must leave stem and chance keys "unset"
+        // so the resolution methods fall back to the global defaults.
+        CropGrowthConfig.CropOverride override = new CropGrowthConfig.CropOverride(
+                3, null, null, null, false, -1, false, null, null, 0);
+        assertEquals(0, override.daysPerFruit);
+        assertNull(override.fruitDirections);
+        assertEquals(-1.0, override.stemUnsuitableMutateChance);
+        assertEquals(-1.0, override.stemUnsuitableFruitChance);
+        assertEquals(-1.0, override.stemUnsuitableGrowChance);
+        assertEquals(-1.0, override.unsuitableMutateChance);
+        assertEquals(-1.0, override.unsuitableGrowChance);
     }
 }

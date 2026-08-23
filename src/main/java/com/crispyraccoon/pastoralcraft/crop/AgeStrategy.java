@@ -94,7 +94,9 @@ public final class AgeStrategy {
         boolean nonArable = CropClassifier.isNonArableAt(level, pos, block);
 
         CropSimulation.GrowthSimulation sim = CropSimulation.simulateGrowth(pos, progress.plantedDay, ctx.currentDay,
-                daysPerStage, maxAge, ctx.seasonLength, suitableSeasons, nonArable);
+                daysPerStage, maxAge, ctx.seasonLength, suitableSeasons, nonArable,
+                CropGrowthConfig.getUnsuitableMutateChance(cropId),
+                CropGrowthConfig.getUnsuitableGrowChance(cropId));
 
         if (sim.mutated()) {
             CropGrowthTracker.mutateToShortGrass(level, pos, block, BlockWriter.FLAG_UPDATE_CLIENTS);

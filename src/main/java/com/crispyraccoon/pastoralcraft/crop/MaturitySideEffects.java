@@ -91,8 +91,6 @@ public final class MaturitySideEffects {
 
         ResourceLocation cropId = BuiltInRegistries.BLOCK.getKey(block);
         StructureDescriptor descriptor = CropStructureRegistry.resolve(block);
-        // waterCompanion is a calendar/behavior flag, kept on the config override.
-        CropGrowthConfig.CropOverride override = CropGrowthConfig.getOverride(cropId);
         boolean keepEntry = false;
 
         // Climb crops (Farmers Delight tomatoes) stay tracked past maturity so the
@@ -120,7 +118,7 @@ public final class MaturitySideEffects {
             }
             case COMPANION -> {
                 BlockPos above = pos.above();
-                boolean waterCompanion = override != null && override.waterCompanion;
+                boolean waterCompanion = descriptor.water();
                 boolean aboveOk = waterCompanion
                         ? level.getFluidState(above).is(Fluids.WATER)
                         : level.getBlockState(above).isAir();

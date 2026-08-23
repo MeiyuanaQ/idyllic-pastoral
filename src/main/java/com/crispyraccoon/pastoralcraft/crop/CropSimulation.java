@@ -92,15 +92,30 @@ public final class CropSimulation {
                                                    int daysPerStage, int maxAge,
                                                    int seasonLength, Set<Season> suitableSeasons,
                                                    boolean nonArable) {
+        return simulateGrowth(pos, plantedDay, currentDay, daysPerStage, maxAge,
+                seasonLength, suitableSeasons, nonArable,
+                CropGrowthConfig.UNSUITABLE_MUTATE_CHANCE.get(),
+                CropGrowthConfig.UNSUITABLE_GROW_CHANCE.get());
+    }
+
+    /**
+     * Production overload that accepts explicit per-crop roll chances (resolved by
+     * {@link CropGrowthConfig#getUnsuitableMutateChance} /
+     * {@link CropGrowthConfig#getUnsuitableGrowChance}). Delegates to the pure
+     * long-key overload after clamping the simulation window.
+     */
+    public static GrowthSimulation simulateGrowth(BlockPos pos, int plantedDay, int currentDay,
+                                                   int daysPerStage, int maxAge,
+                                                   int seasonLength, Set<Season> suitableSeasons,
+                                                   boolean nonArable,
+                                                   double mutateChance, double growChance) {
         long t0 = DebugProfiler.startSection();
         // Clamp the simulated window so a large calendar jump can't make the
         // per-crop loop unboundedly long. The debug "elapsed" below still reports
         // the true (unclamped) gap for diagnostics.
         int simDay = clampSimDay(plantedDay, currentDay, CropGrowthConfig.MAX_CATCH_UP_ELAPSED_DAYS.get());
         GrowthSimulation sim = simulateGrowth(pos.asLong(), plantedDay, simDay, daysPerStage, maxAge,
-                seasonLength, suitableSeasons, nonArable,
-                CropGrowthConfig.UNSUITABLE_MUTATE_CHANCE.get(),
-                CropGrowthConfig.UNSUITABLE_GROW_CHANCE.get());
+                seasonLength, suitableSeasons, nonArable, mutateChance, growChance);
         if (t0 != 0L) {
             DebugProfiler.endSection(t0, "simulateGrowth", "pos=" + pos,
                     "elapsed=" + (currentDay - plantedDay), "stage=" + sim.stage(), "mutated=" + sim.mutated());
@@ -205,13 +220,27 @@ public final class CropSimulation {
         StemSimulation sim = simulateStem(pos.asLong(), plantedDay, simDay, daysPerStage, daysPerFruit, maxAge,
                 seasonLength, suitableSeasons,
                 CropGrowthConfig.STEM_UNSUITABLE_MUTATE_CHANCE.get(),
-                CropGrowthConfig.STEM_UNSUITABLE_FRUIT_CHANCE.get());
+                CropGrowthConfig.STEM_UNSUITABLE_FRUIT_CHANCE.get(),
+                CropGrowthConfig.STEM_UNSUITABLE_GROW_CHANCE.get());
         if (t0 != 0L) {
             DebugProfiler.endSection(t0, "simulateStem", "pos=" + pos,
                     "elapsed=" + (currentDay - plantedDay), "stage=" + sim.stage(),
                     "fruited=" + sim.fruited(), "mutated=" + sim.mutated());
         }
         return sim;
+    }
+
+    /**
+     * Pure-function overload (see the 10-arg overload) with the immature-stem grow
+     * chance fixed at 0.0, preserving the classic stem behavior for callers and
+     * unit tests that only pass the mutate/fruit chances.
+     */
+    public static StemSimulation simulateStem(long posKey, int plantedDay, int currentDay,
+                                              int daysPerStage, int daysPerFruit, int maxAge,
+                                              int seasonLength, Set<Season> suitableSeasons,
+                                              double mutateChance, double fruitChance) {
+        return simulateStem(posKey, plantedDay, currentDay, daysPerStage, daysPerFruit, maxAge,
+                seasonLength, suitableSeasons, mutateChance, fruitChance, 0.0);
     }
 
     /**
@@ -225,11 +254,12 @@ public final class CropSimulation {
      *       {@code daysPerFruit}. A stem fruits at most once (a fruit stays attached
      *       until harvested), so {@code fruited} latches to {@code true}.</li>
      *   <li><b>Unsuitable days</b> never grow the stem. Every {@code daysPerFruit}
-     *       unsuitable days a deterministic roll decides: mutate to short grass
-     *       ({@code mutateChance}), or — for a mature stem that has not yet fruited —
-     *       fruit anyway ({@code fruitChance}), or no change. The per-day
-     *       accumulation means the very first unsuitable day never mutates, so a
-     *       stem freshly entering an unsuitable season is not instantly destroyed.</li>
+     *       unsuitable days a deterministic roll decides the outcome: mutate to short
+     *       grass ({@code mutateChance}); for a MATURE stem that has not yet fruited,
+     *       fruit anyway ({@code fruitChance}); for an IMMATURE stem, grow one stage
+     *       ({@code growChance}); otherwise no change. The per-day accumulation means
+     *       the very first unsuitable day never rolls, so a stem freshly entering an
+     *       unsuitable season is not instantly destroyed.</li>
      * </ul>
      *
      * <p>Growth/fruit/unsuitable counters each accumulate independently across
@@ -238,7 +268,8 @@ public final class CropSimulation {
     public static StemSimulation simulateStem(long posKey, int plantedDay, int currentDay,
                                               int daysPerStage, int daysPerFruit, int maxAge,
                                               int seasonLength, Set<Season> suitableSeasons,
-                                              double mutateChance, double fruitChance) {
+                                              double mutateChance, double fruitChance,
+                                              double growChance) {
         if (currentDay <= plantedDay) return new StemSimulation(0, false, false);
         if (daysPerStage <= 0 || daysPerFruit <= 0 || maxAge <= 0) return new StemSimulation(0, false, false);
 
@@ -246,12 +277,16 @@ public final class CropSimulation {
         // below can never hang, even when a caller bypasses the config clamp.
         currentDay = clampSimDay(plantedDay, currentDay, HARD_MAX_ELAPSED_DAYS);
 
-        // Clamp the roll chances so the two-way outcome stays well-formed
-        // (mutate + fruit must not exceed 1.0).
+        // Clamp the roll chances so the mature (mutate + fruit) and immature
+        // (mutate + grow) rolls each stay well-formed (sum <= 1.0).
         double mut = Math.max(0.0, Math.min(1.0, mutateChance));
         double fruit = Math.max(0.0, Math.min(1.0, fruitChance));
+        double grow = Math.max(0.0, Math.min(1.0, growChance));
         if (mut + fruit > 1.0) {
             fruit = Math.max(0.0, 1.0 - mut);
+        }
+        if (mut + grow > 1.0) {
+            grow = Math.max(0.0, 1.0 - mut);
         }
 
         // Year-round (or ES disabled): pure calendar growth + fruiting, no mutation.
@@ -324,8 +359,13 @@ public final class CropSimulation {
                     if (roll < mut) {
                         return new StemSimulation(stage, true, fruited);
                     }
-                    if (stage >= maxAge && !fruited && roll < mut + fruit) {
-                        fruited = true;
+                    if (stage >= maxAge) {
+                        if (!fruited && roll < mut + fruit) {
+                            fruited = true;
+                        }
+                    } else if (roll < mut + grow) {
+                        stage++;
+                        growAccum = 0;
                     }
                 }
             }

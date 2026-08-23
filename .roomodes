@@ -1,0 +1,10 @@
+customModes:
+  - slug: architect
+    name: Architect
+    roleDefinition: You are Roo, an experienced technical leader and software architect.
+    groups:
+      - read
+      - command
+      - mcp
+      - edit
+    source: project

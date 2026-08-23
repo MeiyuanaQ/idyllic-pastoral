@@ -11,6 +11,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.AttachedStemBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CactusBlock;
 import net.minecraft.world.level.block.CocoaBlock;
 import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.KelpBlock;
@@ -66,6 +67,7 @@ public final class CropClassifier {
         Boolean cached = FREEZE_CACHE.get(block);
         if (cached != null) return cached;
         boolean nonArable = block instanceof SugarCaneBlock
+                || block instanceof CactusBlock
                 || block instanceof NetherWartBlock
                 || block instanceof CocoaBlock
                 || block instanceof LiquidBlockContainer
@@ -74,17 +76,11 @@ public final class CropClassifier {
                 // otherwise be classified arable and mutate to short grass in water.
                 // Detect it structurally and freeze it like the other water crops.
                 || isSegmentedRice(block)
-                // freeze=true override (e.g. Farmers Delight tomato crops that must
-                // not turn into short grass during unsuitable seasons).
-                || isFreezeOverride(block);
+                // freeze=true structural declaration (flax / rice_panicles / tomato
+                // family) — declared in the crop_structure data map.
+                || CropStructureRegistry.resolve(block).freeze();
         FREEZE_CACHE.put(block, nonArable);
         return nonArable;
-    }
-
-    private static boolean isFreezeOverride(Block block) {
-        CropGrowthConfig.CropOverride override =
-                CropGrowthConfig.getOverride(BuiltInRegistries.BLOCK.getKey(block));
-        return override != null && override.freeze;
     }
 
     /**
@@ -226,6 +222,7 @@ public final class CropClassifier {
                 || block instanceof SugarCaneBlock
                 || block instanceof KelpBlock
                 || block instanceof KelpPlantBlock
+                || block instanceof CactusBlock
                 || CropKindResolver.regrowOf(block) != null
                 // Generic AGE recognition: any block exposing an "age" property via
                 // CropKindResolver (BushBlock subclasses, Farmers Delight
@@ -263,6 +260,7 @@ public final class CropClassifier {
         if (block instanceof SweetBerryBushBlock) return state.getValue(SweetBerryBushBlock.AGE);
         if (block instanceof SugarCaneBlock) return -1; // Age is height-based, not property-based
         if (block instanceof KelpBlock || block instanceof KelpPlantBlock) return -1; // height-based
+        if (block instanceof CactusBlock) return -1; // height-based (AGE_15 is vanilla random progress)
         // Generic AGE fallback: BuddingTomatoBlock / PitcherCropBlock / RiceBlock
         // (BushBlock-style) expose a plain "age" property.
         AgeCrop ageCrop = CropKindResolver.ageOf(block);
@@ -287,6 +285,7 @@ public final class CropClassifier {
         if (block instanceof SweetBerryBushBlock) return SweetBerryBushBlock.MAX_AGE;
         if (block instanceof SugarCaneBlock) return 2; // Max 3 blocks tall (0-indexed age = 2)
         if (block instanceof KelpBlock || block instanceof KelpPlantBlock) return KELP_MAX_HEIGHT - 1; // 25
+        if (block instanceof CactusBlock) return 2; // Max 3 blocks tall (0-indexed age = 2)
         if (CropKindResolver.regrowOf(block) != null) return 1; // binary: product absent (false) = 0, present (true) = 1
         // Generic AGE fallback (see getCropAge).
         AgeCrop ageCrop = CropKindResolver.ageOf(block);
@@ -324,6 +323,7 @@ public final class CropClassifier {
         // Sugar cane & kelp growth are handled via block placement, not state changes
         if (block instanceof SugarCaneBlock) return state;
         if (block instanceof KelpBlock || block instanceof KelpPlantBlock) return state;
+        if (block instanceof CactusBlock) return state;
         // Generic AGE fallback (see getCropAge). clampedAge was derived from
         // getCropMaxAge, which already reflects the AGE max, so it is in range.
         AgeCrop ageCrop = CropKindResolver.ageOf(block);
